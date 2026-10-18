@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ServerHub Debug</title>
+  <style>
+    :root {
+      --bg:      #0f1117;
+      --surface: #1a1d27;
+      --border:  #2a2d3a;
+      --text:    #e2e8f0;
+      --dim:     #64748b;
+      --green:   #4ade80;
+      --red:     #f87171;
+      --yellow:  #facc15;
+      --blue:    #60a5fa;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font: 13px/1.5 "JetBrains Mono", "Fira Mono", ui-monospace, monospace;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 14px; font-weight: 600; flex: 1; }
+    header h1 span { color: var(--dim); font-weight: 400; }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--dim);
+      transition: background 0.3s;
+    }
+    .status-dot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .status-label { font-size: 12px; color: var(--dim); }
+    .toggle-btn {
+      padding: 5px 14px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+      font-size: 12px;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .toggle-btn:hover { background: var(--border); }
+    .toggle-btn.active { border-color: var(--red); color: var(--red); }
+    .back-link {
+      font-size: 12px;
+      color: var(--dim);
+      text-decoration: none;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    .back-link:hover { color: var(--text); background: var(--border); }
+
+    /* ── Nav ────────────────────────────────────────────────────────────────── */
+    nav {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      padding: 0 20px;
+      flex-shrink: 0;
+    }
+    nav button {
+      padding: 10px 16px;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--dim);
+      cursor: pointer;
+      font: inherit;
+      font-size: 12px;
+      margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    nav button:hover { color: var(--text); }
+    nav button.active { color: var(--text); border-color: var(--green); }
+    .key-hint {
+      display: inline-block;
+      width: 15px; height: 15px; line-height: 15px;
+      border: 1px solid currentColor;
+      border-radius: 3px;
+      font-size: 10px;
+      text-align: center;
+      margin-right: 6px;
+      opacity: 0.5;
+    }
+
+    /* ── Tabs ───────────────────────────────────────────────────────────────── */
+    .tab { display: none; flex: 1; overflow-y: auto; padding: 20px; }
+    .tab.active { display: block; }
+
+    /* ── Stats tab ──────────────────────────────────────────────────────────── */
+    .stat-group { margin-bottom: 28px; }
+    .stat-group-title {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--dim);
+      margin-bottom: 10px;
+    }
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 8px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px 14px;
+    }
+    .stat-card .lbl { font-size: 11px; color: var(--dim); margin-bottom: 6px; }
+    .stat-card .val { font-size: 20px; font-weight: 700; line-height: 1; }
+    .val.warn   { color: var(--yellow); }
+    .val.danger { color: var(--red); }
+    .val.ok     { color: var(--green); }
+
+    /* ── Timings tab ────────────────────────────────────────────────────────── */
+    .timings-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      color: var(--dim);
+    }
+    .timings-list { display: flex; flex-direction: column; gap: 3px; }
+    .timing-row {
+      display: grid;
+      grid-template-columns: 90px 1fr 75px;
+      gap: 12px;
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+    .timing-row .t { color: var(--dim); }
+    .timing-row .ms { text-align: right; }
+    .timing-row .ms.slow      { color: var(--yellow); }
+    .timing-row .ms.very-slow { color: var(--red); }
+
+    /* ── Logs tab ───────────────────────────────────────────────────────────── */
+    .log-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      font-size: 12px;
+    }
+    .log-controls label { color: var(--dim); }
+    .log-filter {
+      padding: 4px 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font: inherit;
+      font-size: 12px;
+    }
+    .log-count { margin-left: auto; color: var(--dim); }
+    .log-list { display: flex; flex-direction: column; gap: 2px; }
+    .log-row {
+      display: grid;
+      grid-template-columns: 90px 52px 90px 1fr;
+      gap: 12px;
+      align-items: baseline;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 5px 12px;
+      font-size: 12px;
+    }
+    .log-row .t { color: var(--dim); }
+    .log-row .src { color: var(--dim); }
+    .log-row .msg { word-break: break-all; }
+    .badge {
+      display: inline-block;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      line-height: 1.4;
+    }
+    .badge-debug { background: #1e293b; color: var(--dim); }
+    .badge-info  { background: #1e3a5f; color: var(--blue); }
+    .badge-warn  { background: #422006; color: var(--yellow); }
+    .badge-error { background: #450a0a; color: var(--red); }
+
+    /* ── Shared ─────────────────────────────────────────────────────────────── */
+    .placeholder {
+      color: var(--dim);
+      text-align: center;
+      padding: 60px 0;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>ServerHub <span>Debug</span></h1>
+    <div class="status-dot" id="statusDot"></div>
+    <span class="status-label" id="statusLabel">Disabled</span>
+    <button class="toggle-btn" id="toggleBtn" onclick="toggleDebug()">Enable</button>
+    <a class="back-link" href="/">← Dashboard</a>
+  </header>
+
+  <nav>
+    <button class="active" id="tab-btn-stats" onclick="switchTab('stats')">
+      <span class="key-hint">1</span>Stats
+    </button>
+    <button id="tab-btn-timings" onclick="switchTab('timings')">
+      <span class="key-hint">2</span>Timings
+    </button>
+    <button id="tab-btn-logs" onclick="switchTab('logs')">
+      <span class="key-hint">3</span>Logs
+    </button>
+  </nav>
+
+  <!-- Stats -->
+  <div class="tab active" id="tab-stats">
+    <div id="stats-content">
+      <div class="placeholder">Enable debug mode to see live stats</div>
+    </div>
+  </div>
+
+  <!-- Timings -->
+  <div class="tab" id="tab-timings">
+    <div class="timings-header">
+      <span id="timings-count">0</span> timings recorded (newest first)
+    </div>
+    <div class="timings-list" id="timings-list">
+      <div class="placeholder">Enable debug mode to see timings</div>
+    </div>
+  </div>
+
+  <!-- Logs -->
+  <div class="tab" id="tab-logs">
+    <div class="log-controls">
+      <label>Level:</label>
+      <select class="log-filter" id="log-level-filter" onchange="renderLogs()">
+        <option value="">All</option>
+        <option value="debug">Debug</option>
+        <option value="info">Info</option>
+        <option value="warn">Warn</option>
+        <option value="error">Error</option>
+      </select>
+      <span class="log-count"><span id="log-count">0</span> entries</span>
+    </div>
+    <div class="log-list" id="log-list">
+      <div class="placeholder">Enable debug mode to see logs</div>
+    </div>
+  </div>
+
+  <script>
+    let ws        = null;
+    let enabled   = false;
+    let allLogs   = [];
+    let allTimings = [];
+
+    // ── Tab switching ──────────────────────────────────────────────────────────
+    function switchTab(name) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-' + name).classList.add('active');
+      document.getElementById('tab-btn-' + name).classList.add('active');
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.key === '1') switchTab('stats');
+      else if (e.key === '2') switchTab('timings');
+      else if (e.key === '3') switchTab('logs');
+    });
+
+    // ── Enable / Disable ───────────────────────────────────────────────────────
+    async function toggleDebug() {
+      const btn = document.getElementById('toggleBtn');
+      btn.disabled = true;
+      try {
+        const action = enabled ? 'disable' : 'enable';
+        await fetch('/api/debug/' + action, {
+          method: 'POST',
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        if (enabled) {
+          stopStream();
+          setEnabled(false);
+        } else {
+          setEnabled(true);
+          startStream();
+        }
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function setEnabled(on) {
+      enabled = on;
+      document.getElementById('statusDot').classList.toggle('on', on);
+      document.getElementById('statusLabel').textContent = on ? 'Enabled' : 'Disabled';
+      const btn = document.getElementById('toggleBtn');
+      btn.textContent = on ? 'Disable' : 'Enable';
+      btn.classList.toggle('active', on);
+    }
+
+    // ── WebSocket stream ───────────────────────────────────────────────────────
+    function startStream() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(proto + '//' + location.host + '/api/debug/stream');
+      ws.onclose = () => { ws = null; };
+      ws.onerror = () => { ws = null; };
+      ws.onmessage = e => {
+        try { handleMessage(JSON.parse(e.data)); } catch (_) {}
+      };
+    }
+
+    function stopStream() {
+      if (ws) { ws.close(); ws = null; }
+      allLogs    = [];
+      allTimings = [];
+      renderStats(null);
+      renderTimings();
+      renderLogs();
+    }
+
+    // handleMessage handles both Snapshot (initial) and Frame (delta) payloads.
+    // Both share the same field names; the initial snapshot just has full arrays.
+    function handleMessage(data) {
+      if (data.stats) renderStats(data.stats);
+      if (data.logs && data.logs.length > 0) {
+        allLogs.push(...data.logs);
+        if (allLogs.length > 2000) allLogs = allLogs.slice(-2000);
+        renderLogs();
+      }
+      if (data.timings && data.timings.length > 0) {
+        allTimings.push(...data.timings);
+        if (allTimings.length > 500) allTimings = allTimings.slice(-500);
+        renderTimings();
+      }
+    }
+
+    // ── Stats ──────────────────────────────────────────────────────────────────
+    function renderStats(s) {
+      const el = document.getElementById('stats-content');
+      if (!s) {
+        el.innerHTML = '<div class="placeholder">Enable debug mode to see live stats</div>';
+        return;
+      }
+
+      const card = (lbl, val, cls = '') =>
+        `<div class="stat-card"><div class="lbl">${lbl}</div><div class="val ${cls}">${val}</div></div>`;
+
+      const mb  = v  => v.toFixed(1) + ' MB';
+      const uptime = sec => {
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        const s = sec % 60;
+        return h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`;
+      };
+      const bytes = n => {
+        if (n >= 1073741824) return (n / 1073741824).toFixed(1) + ' GB';
+        if (n >= 1048576)    return (n / 1048576).toFixed(1) + ' MB';
+        if (n >= 1024)       return (n / 1024).toFixed(1) + ' KB';
+        return n + ' B';
+      };
+
+      el.innerHTML = `
+        <div class="stat-group">
+          <div class="stat-group-title">Runtime Memory</div>
+          <div class="stat-grid">
+            ${card('Heap Alloc',  mb(s.heap_alloc_mb))}
+            ${card('Heap Inuse',  mb(s.heap_inuse_mb))}
+            ${card('Heap Sys',    mb(s.heap_sys_mb))}
+            ${card('Sys Total',   mb(s.sys_mb))}
+            ${card('GC Cycles',   s.num_gc)}
+            ${card('Goroutines',  s.goroutines, s.goroutines > 100 ? 'danger' : s.goroutines > 50 ? 'warn' : '')}
+          </div>
+        </div>
+        <div class="stat-group">
+          <div class="stat-group-title">Application</div>
+          <div class="stat-grid">
+            ${card('Uptime',   uptime(s.uptime_sec))}
+            ${card('Servers',  s.server_count)}
+            ${card('Online',   s.online_count, s.online_count > 0 ? 'ok' : '')}
+          </div>
+        </div>
+        <div class="stat-group">
+          <div class="stat-group-title">SSH</div>
+          <div class="stat-grid">
+            ${card('Dials OK',       s.dials_ok,      s.dials_ok > 0 ? 'ok' : '')}
+            ${card('Dials Failed',   s.dials_failed,  s.dials_failed > 0 ? 'warn' : '')}
+            ${card('Bytes Read',     bytes(s.bytes_read))}
+            ${card('Bytes Written',  bytes(s.bytes_written))}
+          </div>
+        </div>
+        <div class="stat-group">
+          <div class="stat-group-title">HTTP</div>
+          <div class="stat-grid">
+            ${card('Total Requests', s.req_total)}
+            ${card('Active',         s.req_active)}
+          </div>
+        </div>
+      `;
+    }
+
+    // ── Timings ────────────────────────────────────────────────────────────────
+    function renderTimings() {
+      const list = document.getElementById('timings-list');
+      document.getElementById('timings-count').textContent = allTimings.length;
+
+      if (allTimings.length === 0) {
+        list.innerHTML = '<div class="placeholder">No timings recorded yet</div>';
+        return;
+      }
+
+      list.innerHTML = [...allTimings].reverse().map(t => {
+        const ms     = t.ms.toFixed(1);
+        const msCls  = t.ms > 500 ? 'very-slow' : t.ms > 100 ? 'slow' : '';
+        const time   = new Date(t.t).toLocaleTimeString();
+        return `<div class="timing-row">
+          <span class="t">${time}</span>
+          <span class="name">${esc(t.name)}</span>
+          <span class="ms ${msCls}">${ms} ms</span>
+        </div>`;
+      }).join('');
+    }
+
+    // ── Logs ───────────────────────────────────────────────────────────────────
+    function renderLogs() {
+      const list   = document.getElementById('log-list');
+      const filter = document.getElementById('log-level-filter').value;
+      const shown  = filter ? allLogs.filter(l => l.level === filter) : allLogs;
+
+      document.getElementById('log-count').textContent = shown.length;
+
+      if (shown.length === 0) {
+        const msg = allLogs.length === 0
+          ? 'Enable debug mode to see logs'
+          : 'No logs match the selected filter';
+        list.innerHTML = `<div class="placeholder">${msg}</div>`;
+        return;
+      }
+
+      list.innerHTML = [...shown].reverse().map(l => {
+        const time = new Date(l.t).toLocaleTimeString();
+        return `<div class="log-row">
+          <span class="t">${time}</span>
+          <span class="badge badge-${l.level}">${l.level}</span>
+          <span class="src">${esc(l.source)}</span>
+          <span class="msg">${esc(l.msg)}</span>
+        </div>`;
+      }).join('');
+    }
+
+    function esc(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/'/g, '&#39;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // ── Init ───────────────────────────────────────────────────────────────────
+    (async () => {
+      try {
+        const r    = await fetch('/api/debug/status');
+        const data = await r.json();
+        if (data.enabled) {
+          setEnabled(true);
+          startStream();
+        }
+      } catch (_) {}
+    })();
+  </script>
+</body>
+</html>

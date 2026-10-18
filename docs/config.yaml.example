@@ -1,0 +1,44 @@
+server:
+  port: 7070
+  bind: "127.0.0.1"     # loopback only; use your Tailscale IP to expose to tailnet
+                        # (non-loopback binds travel as plaintext HTTP — use an encrypted overlay)
+  open_browser: true
+  # insecure_ignore_host_key: false  # true disables SSH host key verification (not recommended)
+
+theme: "green"            # green | blue | purple | coral
+
+terminal:                 # web terminal appearance (Settings → Web Terminal)
+  background: "#0e0e10"
+  foreground: "#e0e0e8"
+  accent: "#639922"       # cursor + terminal chrome
+
+local:                    # the machine running ServerHub
+  name: ""                # empty = system hostname
+  tags: []
+  notes: ""
+  quick_actions: []
+
+servers:
+  - id: nairwell
+    name: "nairwell"
+    host: "192.168.1.10"
+    port: 22
+    user: "matthew"
+    key: "~/.ssh/id_ed25519"
+    tags: ["homelab", "main"]
+    notes: "Main server, runs Docker stacks"
+    quick_actions:
+      - label: "Run backup"
+        command: "~/scripts/backup.sh"
+      - label: "Pull all images"
+        command: "docker compose -f ~/compose.yml pull"
+
+  - id: rpi5
+    name: "rpi5"
+    host: "192.168.1.20"
+    port: 22
+    user: "matthew"
+    key: "~/.ssh/id_ed25519"
+    tags: ["homelab"]
+    notes: "Raspberry Pi 5"
+    quick_actions: []

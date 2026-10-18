@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ServerHub</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  /* Page colours are live-applied from /api/auth/status (hue/shade) — the
+     login page previews the dashboard look. Defaults = unset instance. */
+  :root {
+    --accent: #639922;
+    --lg-accent-text: #101014;
+    --lg-bg:      hsl(0,0%,20%);
+    --lg-surface: hsl(0,0%,22.2%);
+    --lg-surface2:hsl(0,0%,24.4%);
+    --lg-border:  hsl(0,0%,28.9%);
+    --lg-text:    hsl(0,0%,91%);
+    --lg-muted:   hsl(0,0%,63.5%);
+    --lg-dim:     hsl(0,0%,51.3%);
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--lg-bg);
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    color: var(--lg-text);
+  }
+
+  .wrap {
+    min-height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .card {
+    width: 100%;
+    max-width: 460px;
+    background: var(--lg-surface);
+    border: 1px solid var(--lg-border);
+    border-radius: 12px;
+    padding: 32px 30px 22px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.35);
+  }
+
+  .brand {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    color: var(--accent);
+    margin-bottom: 18px;
+  }
+
+  .title { font-size: 19px; font-weight: 600; margin-bottom: 8px; }
+  .lead  { font-size: 13px; line-height: 1.55; color: var(--lg-muted); margin-bottom: 20px; }
+
+  label { display: block; font-size: 12px; color: var(--lg-muted); margin-bottom: 6px; }
+
+  .input {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--lg-border);
+    background: var(--lg-surface2);
+    color: var(--lg-text);
+    font-size: 14px;
+    outline: none;
+    transition: border-color .15s;
+  }
+  .input:focus { border-color: var(--accent); }
+
+  .row { margin-bottom: 14px; }
+
+  .btn {
+    display: inline-block;
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: none;
+    background: var(--accent);
+    color: var(--lg-accent-text);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter .15s, border-color .15s;
+  }
+  .btn:hover { filter: brightness(1.1); }
+  .btn:disabled { opacity: .5; cursor: wait; }
+
+  .btn-ghost {
+    background: transparent;
+    border: 1px solid var(--lg-border);
+    color: var(--lg-text);
+    font-weight: 500;
+  }
+  .btn-ghost:hover { border-color: var(--lg-muted); filter: none; }
+
+  /* Appearance sliders — the page itself previews live */
+  label small { font-weight: 400; }
+
+  .slider-row-input {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 4px;
+    background: var(--lg-border);
+    outline: none;
+    cursor: pointer;
+  }
+  .slider-row-input.hue {
+    background: linear-gradient(to right, hsl(0,70%,55%), hsl(60,70%,55%), hsl(120,70%,55%), hsl(180,70%,55%), hsl(240,70%,55%), hsl(300,70%,55%), hsl(360,70%,55%));
+  }
+  .slider-row-input.shade {
+    background: linear-gradient(to right, #050505, #4a4a4a, #a8a8a8, #f6f6f6);
+  }
+  .slider-row-input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid rgba(0,0,0,0.35);
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  }
+  .slider-row-input::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid rgba(0,0,0,0.35);
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  }
+
+  .btn-choice {
+    width: 100%;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .btn-choice .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--lg-border); flex-shrink: 0;
+  }
+  .btn-choice .dot.on { background: var(--accent); }
+  .btn-choice small { margin-left: auto; color: var(--lg-muted); font-weight: 400; font-size: 11px; }
+
+  .foot {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--lg-border);
+  }
+
+  .step { display: none; }
+  .step.active { display: block; }
+
+  .dots { display: flex; gap: 6px; justify-content: center; margin-top: 22px; }
+  .dots i {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--lg-border); transition: background .2s;
+  }
+  /* Dots: done = green; not done = the polarity-correct text tone (white on
+     dark shades, black on light) so they always show against the background.
+     A skipped step stays visible and goes red. */
+  .dots i { background: var(--lg-text); }
+  .dots i.done { background: #4caf50; }
+  .dots i.skip { background: #e53935; }
+
+  .msg {
+    font-size: 13px;
+    color: #e53935;
+    margin-top: 12px;
+    min-height: 18px;
+  }
+  .msg.info { color: var(--lg-muted); }
+
+  /* ── Blank login: no field, just stars as you type ────────────────── */
+  .visually-hidden {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* Login + wizard modes drop the card box entirely: brand up top, content
+     on a straight-edged, terminal-flavoured stage. */
+  body.login-mode .wrap,
+  body.wizard-mode .wrap { align-items: stretch; padding: 32px 20px 40px; }
+  body.login-mode .card,
+  body.wizard-mode .card {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: none;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  body.login-mode .brand,
+  body.wizard-mode .brand {
+    text-align: center;
+    font-size: 34px;
+    font-weight: 500;
+    letter-spacing: .12em;
+    margin-bottom: 7vh;
+  }
+  body.login-mode #login {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+
+  /* Complication slot — swap the type via localStorage "sh-complication":
+     {"type":"time"|"quote"|"emoji"|"image","value":"..."} */
+  .lg-complication { text-align: center; min-height: 96px; margin-bottom: 7vh; }
+  .lg-time {
+    font-size: 44px;
+    font-weight: 300;
+    letter-spacing: .03em;
+    line-height: 1.05;
+    color: var(--lg-text);
+  }
+  .lg-date { font-size: 14px; color: var(--lg-text); margin-top: 6px; }
+  .lg-quote {
+    max-width: 520px;
+    margin: 0 auto;
+    font-size: 16px;
+    font-style: italic;
+    line-height: 1.6;
+    color: var(--lg-muted);
+  }
+  .lg-emoji { font-size: 60px; line-height: 1; }
+  .lg-image { max-width: 280px; max-height: 150px; display: block; margin: 0 auto; }
+
+  .lg-prompt { font-size: 13px; color: var(--lg-text); margin-bottom: 10px; }
+  #login-form {
+    width: 260px;
+    height: 56px;
+    border: 2px solid var(--lg-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: text;
+  }
+  #login-form.busy .lg-typed { opacity: .35; }
+  .lg-typed {
+    font-family: ui-monospace, 'Cascadia Code', 'Fira Code', Consolas, Menlo, monospace;
+    font-size: 22px;
+    line-height: 1;
+    letter-spacing: 6px;
+    padding-left: 6px;
+    color: var(--lg-text);
+    text-align: center;
+    word-break: break-all;
+  }
+  .lg-typed::after {
+    content: '';
+    display: inline-block;
+    width: 3px; height: 20px;
+    margin-left: 2px;
+    vertical-align: -3px;
+    background: var(--lg-text);
+    animation: lg-blink 1.1s step-end infinite;
+  }
+
+  /* State 2: the passcode strip is gone; the name types itself in and the
+     line grows underneath it. */
+  .lg-welcome-wrap { display: none; text-align: center; }
+  .lg-done .lg-welcome-wrap { display: block; }
+  .lg-welcome {
+    display: inline-block;
+    min-width: 220px;
+    font-size: 30px;
+    color: var(--lg-text);
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--lg-muted);
+  }
+  .lg-name.typing::after {
+    content: '';
+    display: inline-block;
+    width: 2px; height: 28px;
+    margin-left: 3px;
+    vertical-align: -4px;
+    background: var(--accent);
+    animation: lg-blink .9s step-end infinite;
+  }
+  .lg-enter {
+    margin-top: 14px;
+    font-size: 14px;
+    color: var(--lg-text);
+    opacity: 0;
+    transition: opacity .4s;
+  }
+  .lg-enter.show { opacity: 1; }
+  .lg-accent { color: var(--accent); text-decoration: underline; }
+
+  /* ── Wizard mode: same stripped-back look as the login screen ─────── */
+  #wizard {
+    width: 100%;
+    max-width: 460px;
+    margin: 0 auto;
+    text-align: center;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  /* The final welcome screen floats in the middle of the page, scaled up. */
+  #ob-step-5.active {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+  }
+  #wizard #ob-step-5 .title { font-size: 46px; font-weight: 500; }
+  #wizard #ob-step-5 .lead { font-size: 17px; }
+  body.wizard-mode #wizard .title { font-size: 24px; font-weight: 500; margin-bottom: 10px; }
+  body.wizard-mode #wizard .lead { max-width: 380px; margin: 0 auto 22px; }
+  body.wizard-mode #wizard label { text-align: center; }
+  body.wizard-mode #wizard .input {
+    display: block;
+    width: 100%;
+    max-width: 280px;
+    margin: 0 auto;
+    height: 52px;
+    border-radius: 0;
+    border: 2px solid var(--lg-muted);
+    background: transparent;
+    text-align: center;
+    font-family: ui-monospace, 'Cascadia Code', 'Fira Code', Consolas, Menlo, monospace;
+    font-size: 15px;
+  }
+  body.wizard-mode #wizard .input:focus { border-color: var(--accent); }
+  body.wizard-mode .btn { border-radius: 0; }
+  body.wizard-mode .btn-ghost { border: 2px solid var(--lg-border); }
+  body.wizard-mode .btn-choice .dot { border-radius: 0; }
+  body.wizard-mode .dots { margin: 0 0 26px; }
+  body.wizard-mode .dots i { width: 7px; height: 7px; border-radius: 0; }
+  body.wizard-mode .slider-row-input { border-radius: 0; }
+  body.wizard-mode .slider-row-input::-webkit-slider-thumb { border-radius: 0; }
+  body.wizard-mode .slider-row-input::-moz-range-thumb { border-radius: 0; }
+  body.wizard-mode .imgbox,
+  body.wizard-mode .imgbox img { border-radius: 0; }
+  body.wizard-mode .whatslist {
+    max-width: 380px;
+    margin-left: auto;
+    margin-right: auto;
+    text-align: left;
+  }
+
+  @keyframes lg-blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .lg-typed::after, .lg-name.typing::after { animation: none; }
+  }
+
+  /* Info page */
+  .imgbox {
+    border: 1px dashed var(--lg-border);
+    border-radius: 10px;
+    padding: 18px;
+    text-align: center;
+    color: var(--lg-muted);
+    font-size: 12px;
+    line-height: 1.6;
+    background: var(--lg-surface2);
+  }
+  .imgbox img { max-width: 100%; height: auto; border-radius: 8px; display: block; margin: 0 auto; }
+
+  .whatslist {
+    margin: 16px 0 6px;
+    padding-left: 18px;
+    font-size: 13px;
+    line-height: 1.9;
+    color: var(--lg-muted);
+  }
+  .whatslist b { color: var(--lg-text); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="brand">SERVER HUB</div>
+
+    <!-- ── First-run onboarding wizard ─────────────────────────────────── -->
+    <div id="wizard" style="display:none">
+      <div class="dots"><i class="on" data-dot="0"></i><i data-dot="1"></i><i data-dot="2"></i><i data-dot="3"></i></div>
+
+      <!-- Step 1: the user's name -->
+      <div class="step" id="ob-step-1">
+        <div class="title" style="margin-top:14px">Hey!</div>
+        <p class="lead">What's your name?</p>
+        <div class="row">
+          <input class="input" id="ob-name" type="text" maxlength="64" placeholder="e.g. Alex" autocomplete="off">
+        </div>
+        <div class="foot">
+          <button class="btn btn-ghost" style="visibility:hidden" tabindex="-1">Back</button>
+          <button class="btn" id="ob-next1">Next →</button>
+        </div>
+      </div>
+
+      <!-- Step 2: password choice (no fields until Yes is picked) -->
+      <div class="step" id="ob-step-2">
+        <div class="title" style="margin-top:14px">Protect this dashboard</div>
+        <p class="lead">Do you want a password? You can browse freely here anyway — this decides whether a password is needed to open the dashboard.</p>
+        <div id="ob-choice">
+          <button class="btn btn-ghost btn-choice" id="ob-want-pw"><span class="dot" style="background:var(--accent)"></span>Yes, set a password <small>recommended</small></button>
+          <button class="btn btn-ghost btn-choice" id="ob-no-pw"><span class="dot"></span>No, skip <small>&nbsp;</small></button>
+        </div>
+        <div class="foot">
+          <button class="btn btn-ghost" id="ob-back2">← Back</button>
+          <button class="btn" id="ob-next2" style="visibility:hidden" tabindex="-1">Next →</button>
+        </div>
+      </div>
+
+      <!-- Step 2b: password fields (yes only — No skips this page) -->
+      <div class="step" id="ob-step-2b">
+        <div class="title" style="margin-top:14px">Set a password</div>
+        <p class="lead">This password opens the dashboard. 8–72 characters, anything you'll remember.</p>
+        <div class="row">
+          <label for="ob-pw">New password</label>
+          <input class="input" id="ob-pw" type="password" autocomplete="new-password">
+        </div>
+        <div class="row">
+          <label for="ob-pw2">Confirm password</label>
+          <input class="input" id="ob-pw2" type="password" autocomplete="new-password">
+        </div>
+        <div class="foot">
+          <button class="btn btn-ghost" id="ob-back2b">← Back</button>
+          <button class="btn" id="ob-next2b">Next →</button>
+        </div>
+      </div>
+
+      <!-- Step 3: appearance -->
+      <div class="step" id="ob-step-3">
+        <div class="title" style="margin-top:14px">Make it yours</div>
+        <p class="lead">Pick a look — you can always change it later in Settings.</p>
+        <div class="row">
+          <label for="ob-hue">Accent color</label>
+          <input class="slider-row-input hue" id="ob-hue" type="range" min="0" max="360" value="120">
+        </div>
+        <div class="row">
+          <label for="ob-shade">Surface shade <small>(black ↔ white)</small></label>
+          <input class="slider-row-input shade" id="ob-shade" type="range" min="0" max="100" value="20">
+        </div>
+        <div class="foot">
+          <button class="btn btn-ghost" id="ob-back3">← Back</button>
+          <button class="btn" id="ob-next3">Next →</button>
+        </div>
+      </div>
+
+      <!-- Step 4: what is this -->
+      <div class="step" id="ob-step-4">
+        <div class="title" style="margin-top:14px">What you're looking at</div>
+        <p class="lead">ServerHub is your personal server dashboard.</p>
+        <div class="imgbox" id="ob-imgbox">
+          <img id="ob-img" alt="Dashboard overview" style="display:none" src="/onboarding-image">
+          <div id="ob-img-placeholder">
+            <div style="font-size:11px;color:var(--lg-dim);margin-bottom:6px">image placeholder</div>
+            Add your own explainer image to <code>go/web/assets/onboarding-image.png</code> and rebuild.
+          </div>
+        </div>
+        <ul class="whatslist">
+          <li><b>Cards</b> — live CPU, memory, disk + container status for each server</li>
+          <li><b>Containers</b> — start / stop / restart Docker containers from the browser</li>
+          <li><b>Quick actions</b> — one-click commands you define in the config</li>
+          <li><b>Terminal</b> — a real shell (SSH or local) in a browser tab</li>
+        </ul>
+        <div class="foot">
+          <button class="btn btn-ghost" id="ob-back4">← Back</button>
+          <button class="btn" id="ob-finish">Open dashboard →</button>
+        </div>
+      </div>
+
+      <!-- Step 5: welcome (not part of the dot track) -->
+      <div class="step" id="ob-step-5">
+        <div class="title" style="margin-top:14px">Welcome <span id="ob-welcome-name"></span></div>
+        <p class="lead">press anything to continue!</p>
+      </div>
+    </div>
+
+    <!-- ── Login (password mode): complication, passcode, typed welcome ── -->
+    <div id="login" style="display:none">
+      <div id="lg-complication" class="lg-complication"></div>
+      <div class="lg-prompt">Enter Passcode:</div>
+      <form id="login-form">
+        <div id="lg-typed" class="lg-typed" aria-hidden="true"></div>
+        <label class="visually-hidden" for="lg-password">Password</label>
+        <input type="password" id="lg-password" class="visually-hidden" name="password"
+               autocomplete="current-password" autofocus>
+        <button type="submit" id="lg-submit" style="display:none">Sign in</button>
+      </form>
+      <div class="msg" id="lg-msg"></div>
+    </div>
+
+    <!-- State 2: name types itself in, then any key opens the app. -->
+    <div class="lg-welcome-wrap">
+      <div id="lg-welcome" class="lg-welcome"></div>
+      <div id="lg-enter" class="lg-enter">press <span class="lg-accent">anything</span> to enter</div>
+    </div>
+
+    <!-- ── Opt-out info (password declined) ─────────────────────────────── -->
+    <div id="nolock" style="display:none">
+      <div class="title">No password set</div>
+      <p class="lead">This instance runs without a password — it's protected by who can reach it (loopback only by default). Keep it that way only if you're comfortable with that.</p>
+      <div id="nolock-setup">
+        <p class="lead" style="margin-bottom:10px">Changed your mind? Setting one takes a few seconds (from this machine):</p>
+        <div class="row">
+          <input class="input" id="so-pw" type="password" placeholder="Password (8–72 chars)" autocomplete="new-password">
+        </div>
+        <div class="row">
+          <input class="input" id="so-pw2" type="password" placeholder="Confirm password" autocomplete="new-password">
+        </div>
+        <button class="btn" id="so-btn" style="width:100%">Set password</button>
+      </div>
+      <div class="foot">
+        <button class="btn btn-ghost" id="nolock-go" style="width:100%">Open dashboard →</button>
+      </div>
+      <div class="msg" id="so-msg"></div>
+    </div>
+
+    <!-- ── Setup must be done on the host ───────────────────────────────── -->
+    <div id="onhost" style="display:none">
+      <div class="title">Setup required</div>
+      <p class="lead">ServerHub hasn't been set up yet. For security, the first-run setup must be completed on the machine it runs on — open it locally (e.g. http://127.0.0.1:<span id="onhost-port"></span>/) to continue.</p>
+      <div class="foot">
+        <button class="btn btn-ghost" id="onhost-retry" style="width:100%">Retry</button>
+      </div>
+    </div>
+
+    <div class="msg" id="msg" style="margin-top:10px"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+var wantPassword = false; // wizard step 2 choice
+var wizChoice = null;     // null until picked; false keeps the password dot visible but red
+var pwSet = false;        // a password passed validation: its dot stays green going back
+var wizFinishing = false; // guards the final POST against double submits
+
+function msg(text, cls) {
+  var el = document.getElementById('msg');
+  el.textContent = text;
+  el.className = 'msg' + (cls ? ' ' + cls : '');
+}
+
+// The redirect target must stay on this origin: a local path only.
+function safeNext() {
+  var next = new URLSearchParams(location.search).get('next') || '/';
+  if (!next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')) return '/';
+  return next;
+}
+
+function show(id) {
+  ['wizard', 'login', 'nolock', 'onhost'].forEach(function (n) {
+    document.getElementById(n).style.display = n === id ? '' : 'none';
+  });
+  document.body.classList.toggle('login-mode', id === 'login');
+  document.body.classList.toggle('wizard-mode', id === 'wizard');
+  document.getElementById('msg').textContent = '';
+}
+
+// ── Wizard ──────────────────────────────────────────────────────────────────
+
+// Step 2b (password fields) only exists on the "yes" path; step 5 is the
+// welcome screen (no dot of its own).
+var WIZ = ['ob-step-1', 'ob-step-2', 'ob-step-2b', 'ob-step-3', 'ob-step-4', 'ob-step-5'];
+var wizStep = 0;
+var obHue = 120;     // accent
+var obShade = 20;    // surface shade (0=black … 100=white)
+
+function wizShow(i) {
+  wizStep = i;
+  WIZ.forEach(function (id, j) {
+    document.getElementById(id).classList.toggle('active', j === i);
+  });
+  // Five dots always. Steps left behind are green; the current + upcoming are
+  // neutral (white/black per background). The password dot stays green once a
+  // password has been set, even when navigating back to it. On the no-password
+  // path the skipped dot stays visible and red.
+  var html = '';
+  for (var j = 0; j < 5; j++) {
+    var cls = j < i ? 'done' : '';
+    if (j === 2 && pwSet) cls = 'done';
+    if (j === 2 && wizChoice === false) cls = 'skip';
+    html += '<i class="' + cls + '"></i>';
+  }
+  document.querySelector('.dots').innerHTML = html;
+  if (i === 5) {
+    document.getElementById('ob-welcome-name').textContent =
+      document.getElementById('ob-name').value.trim();
+    wizArmGo();
+  }
+  var f = document.getElementById(WIZ[i]).querySelector('input, button');
+  if (f) f.focus();
+}
+
+// The welcome step has no buttons: any key or click finishes onboarding.
+var wizGoArmed = false;
+function wizArmGo() {
+  if (wizGoArmed) return;
+  wizGoArmed = true;
+  // Defer so the click/press that entered this step can't also trigger it.
+  setTimeout(function () {
+    document.addEventListener('keydown', function (e) {
+      if (wizStep !== 5) return;
+      if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
+      if (/^F\d+$/.test(e.key)) return;
+      e.preventDefault();
+      wizFinish();
+    });
+    document.addEventListener('click', function () {
+      if (wizStep === 5) wizFinish();
+    });
+  }, 0);
+}
+
+// ── Palette maths (mirror of app.js — keep the two in sync) ─────────────────
+//
+// Greys are placed in WCAG space instead of lerping HSL lightness: each tone
+// is chosen by the contrast ratio it must reach against the grey it sits on,
+// so the whole 0–100 shade range stays readable. Plain arithmetic — every
+// custom property still ends up as a simple hsl() string.
+
+function _lin(v) { return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+function _srgb(y) { return y <= 0.0031308 ? y * 12.92 : 1.055 * Math.pow(y, 1 / 2.4) - 0.055; }
+function _lum(r, g, b) { return 0.2126 * _lin(r) + 0.7152 * _lin(g) + 0.0722 * _lin(b); }
+function _contrast(y1, y2) {
+  return (Math.max(y1, y2) + 0.05) / (Math.min(y1, y2) + 0.05);
+}
+function _greyY(l) { return _lin(l / 100); }
+function _greyL(y) { return _srgb(Math.max(0, Math.min(1, y))) * 100; }
+function _tierL(y, target, dark) {
+  return _greyL(dark ? target * (y + 0.05) - 0.05 : (y + 0.05) / target - 0.05);
+}
+
+// The grey where dark and light text have identical contrast (≈46.03).
+var SEAM = _greyL(Math.sqrt(1.05 * 0.05) - 0.05);
+
+var ACCENT_LABEL_DARK = '#101014', ACCENT_LABEL_LIGHT = '#f4f4f6';
+var _LABEL_DARK_Y  = _lum(0x10 / 255, 0x10 / 255, 0x14 / 255);
+var _LABEL_LIGHT_Y = _lum(0xf4 / 255, 0xf4 / 255, 0xf6 / 255);
+
+function _accentRgb(hue, l) {
+  var c = 0.70 * (1 - Math.abs(2 * l / 100 - 1));
+  var hp = ((hue % 360) + 360) % 360 / 60;
+  var x = c * (1 - Math.abs(hp % 2 - 1));
+  var r = 0, g = 0, b = 0;
+  if      (hp < 1) { r = c; g = x; }
+  else if (hp < 2) { r = x; g = c; }
+  else if (hp < 3) { g = c; b = x; }
+  else if (hp < 4) { g = x; b = c; }
+  else if (hp < 5) { r = x; b = c; }
+  else             { r = c; b = x; }
+  var m = l / 100 - c / 2;
+  return [r + m, g + m, b + m];
+}
+
+function _accentLabelContrast(hue, l) {
+  var rgb = _accentRgb(hue, l);
+  var y = _lum(rgb[0], rgb[1], rgb[2]);
+  return Math.max(_contrast(y, _LABEL_DARK_Y), _contrast(y, _LABEL_LIGHT_Y));
+}
+
+// accentLightness: 55 on dark shades, 30 on light (55-as-text is ~1:1 on
+// white); ±1 steps clear the few hues where neither label tone hits 4.5:1.
+function accentLightness(hue, bg) {
+  var dark = bg <= SEAM, base = dark ? 55 : 30, dir = dark ? 1 : -1;
+  for (var d = 0; d <= 6; d++) {
+    for (var k = 0; k < (d ? 2 : 1); k++) {
+      var l = base + dir * d * (k ? -1 : 1);
+      if (l >= 24 && l <= 70 && _accentLabelContrast(hue, l) >= 4.5) return l;
+    }
+  }
+  return base;
+}
+
+function accentTextColor(hue, l) {
+  var rgb = _accentRgb(hue, l);
+  var y = _lum(rgb[0], rgb[1], rgb[2]);
+  return _contrast(y, _LABEL_DARK_Y) >= _contrast(y, _LABEL_LIGHT_Y)
+    ? ACCENT_LABEL_DARK : ACCENT_LABEL_LIGHT;
+}
+
+function _greyHex(l) {
+  var n = Math.round(Math.max(0, Math.min(100, l)) * 255 / 100);
+  var hex = n.toString(16).padStart(2, '0');
+  return '#' + hex + hex + hex;
+}
+
+function _rgbHex(rgb) {
+  return '#' + rgb.map(function (v) {
+    return Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0');
+  }).join('');
+}
+
+// terminalDefaults maps the onboarding hue/shade onto the web terminal's
+// default colours: page background, primary text tone, and the same accent
+// used across the app.
+function terminalDefaults(hue, shade) {
+  var bg = Math.max(2, shade);
+  var dark = bg <= SEAM;
+  var t = dark ? 1 - bg / SEAM : (bg - SEAM) / (100 - SEAM);
+  var surface2 = bg + (dark ? 1 : -1) * (0.4 + 0.6 * t) * 6;
+  var textL = dark ? Math.max(91, _tierL(_greyY(surface2), 4.55, true))
+                   : Math.min(9, _tierL(_greyY(surface2), 4.55, false));
+  var accentL = accentLightness(hue, bg);
+  return {
+    background: _greyHex(bg),
+    foreground: _greyHex(textL),
+    accent: _rgbHex(_accentRgb(hue, accentL))
+  };
+}
+
+// applyLoginTheme mirrors the SPA palette (app.js applyColorConfig /
+// shadeSurfaceVars) and dresses the whole login page in it — the page IS the
+// preview: text tracks the surface shade, accent labels follow the accent's
+// own contrast. Keep the math in sync with app.js.
+function applyLoginTheme(hue, shade) {
+  var h = parseInt(hue, 10);
+  obHue = Math.max(0, Math.min(360, isFinite(h) ? h : 120));
+  var sh = parseInt(shade, 10);
+  obShade = Math.max(0, Math.min(100, isFinite(sh) ? sh : 20));
+  var bg = Math.max(2, obShade);
+  var dark = bg <= SEAM;
+  var t = dark ? 1 - bg / SEAM : (bg - SEAM) / (100 - SEAM);
+  var sign = dark ? 1 : -1;       // dark: layers lighter, light: darker
+  var mag = 0.4 + 0.6 * t;        // hug magnitude: 40% → 100%
+  var hug = function (x) { return sign * mag * x; };
+  var pc = function (l) { return Math.round(l * 10) / 10; };
+
+  var surface  = bg + hug(3);
+  var surface2 = bg + hug(6);
+  var border   = bg + hug(12);
+  var textL    = dark ? Math.max(91, _tierL(_greyY(surface2), 4.55, true))
+                      : Math.min(9,  _tierL(_greyY(surface2), 4.55, false));
+  var mutedL   = _tierL(_greyY(surface), 4.55, dark);
+  var dimL     = _tierL(_greyY(surface), 3.05, dark);
+  var accentL  = accentLightness(obHue, bg);
+
+  var s = document.documentElement.style;
+  s.setProperty('--accent', 'hsl(' + obHue + ',70%,' + accentL + '%)');
+  s.setProperty('--lg-accent-text', accentTextColor(obHue, accentL));
+  s.setProperty('--lg-bg',      'hsl(0,0%,' + pc(bg) + '%)');
+  s.setProperty('--lg-surface', 'hsl(0,0%,' + pc(surface) + '%)');
+  s.setProperty('--lg-surface2','hsl(0,0%,' + pc(surface2) + '%)');
+  s.setProperty('--lg-border',  'hsl(0,0%,' + pc(border) + '%)');
+  s.setProperty('--lg-text',    'hsl(0,0%,' + pc(textL) + '%)');
+  s.setProperty('--lg-muted',   'hsl(0,0%,' + pc(mutedL) + '%)');
+  s.setProperty('--lg-dim',     'hsl(0,0%,' + pc(dimL) + '%)');
+
+  var hueEl = document.getElementById('ob-hue');
+  if (hueEl) hueEl.value = obHue;
+  var shadeEl = document.getElementById('ob-shade');
+  if (shadeEl) shadeEl.value = obShade;
+}
+
+function wizNext() {
+  if (wizStep === 0) { wizShow(1); return; }
+  if (wizStep === 2) {
+    var pw = document.getElementById('ob-pw').value;
+    var pw2 = document.getElementById('ob-pw2').value;
+    if (pw.length < 8)  { msg('Password must be at least 8 characters.'); return; }
+    if (pw.length > 72) { msg('Password must be at most 72 bytes.'); return; }
+    if (pw !== pw2)     { msg('Passwords do not match.'); return; }
+    pwSet = true; // this step stays green from here on
+    wizShow(3);
+    return;
+  }
+  if (wizStep === 3) {
+    wizShow(4);
+    // Kick the image load in now.
+    var img = document.getElementById('ob-img');
+    img.onload = function () {
+      img.style.display = 'block';
+      document.getElementById('ob-img-placeholder').style.display = 'none';
+    };
+    img.onerror = function () { /* keep placeholder */ };
+    img.src = '/onboarding-image';
+  }
+}
+
+function wizFinish() {
+  if (wizFinishing) return;
+  var nameEl = document.getElementById('ob-name');
+  var name = nameEl.value.trim();
+  if (name.length > 64) { msg('Name must be 64 characters or fewer.'); return; }
+  if (wantPassword && document.getElementById('ob-pw').value !== document.getElementById('ob-pw2').value) {
+    msg('Passwords do not match.'); return;
+  }
+  wizFinishing = true;
+  var btn = document.getElementById('ob-finish');
+  btn.disabled = true;
+  fetch('/api/onboarding', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+    body: JSON.stringify({
+      user_name: name,
+      password: wantPassword ? document.getElementById('ob-pw').value : '',
+      opt_out: !wantPassword,
+      hue: obHue,
+      shade: obShade,
+      terminal: terminalDefaults(obHue, obShade)
+    })
+  })
+    .then(function (r) {
+      if (r.status === 200) { location.href = safeNext(); return { noop: true }; }
+      if (r.status === 403) { location.reload(); return { noop: true }; } // someone completed setup meanwhile
+      return r.json().then(function (b) { msg(b.error || 'Setup failed.'); return { noop: true }; });
+    })
+    .catch(function () { msg('Request failed — is ServerHub running?', 'info'); })
+    .finally(function () { btn.disabled = false; wizFinishing = false; });
+}
+
+// ── Login ───────────────────────────────────────────────────────────────────
+
+// The login view is deliberately blank: a visually hidden password input keeps
+// focus and every character typed is echoed as a star on the page.
+function lgSyncTyped() {
+  var v = document.getElementById('lg-password').value;
+  document.getElementById('lg-typed').textContent = '*'.repeat(Math.min(v.length, 96));
+}
+
+// lgGranted flips once the password is accepted: the field disappears, after a
+// beat the welcome turns into "Welcome <name> — press to enter", and the next
+// Enter or click opens the app.
+var lgGranted = false;
+
+// Typing works anywhere on the page — no need to click into the invisible
+// field first. When it is not focused, keystrokes are captured and replayed
+// into it so mobile focus, paste and password managers keep working.
+document.addEventListener('keydown', function (e) {
+  if (!document.body.classList.contains('login-mode') || lgGranted) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'Enter') { e.preventDefault(); doLogin(); return; }
+  var input = document.getElementById('lg-password');
+  if (e.key === 'Backspace') {
+    e.preventDefault();
+    input.value = input.value.slice(0, -1);
+    lgSyncTyped();
+    return;
+  }
+  if (e.key.length === 1 && document.activeElement !== input) {
+    e.preventDefault();
+    input.focus();
+    input.value += e.key;
+    lgSyncTyped();
+  }
+});
+document.addEventListener('click', function () {
+  if (document.body.classList.contains('login-mode') && !lgGranted) {
+    document.getElementById('lg-password').focus();
+  }
+});
+
+// "press anything to enter": any key (or click) opens the app once granted.
+function lgArmEnter() {
+  var go = function () { location.href = safeNext(); };
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
+    if (/^F\d+$/.test(e.key)) return;
+    e.preventDefault();
+    go();
+  });
+  document.addEventListener('click', go);
+}
+
+// State 2: the name types itself in like it is being entered into the field,
+// the underline grows with it, then "press anything to enter" fades in.
+function lgRevealEnter() {
+  document.getElementById('lg-enter').classList.add('show');
+  lgArmEnter();
+}
+function lgTypeWelcome(name) {
+  document.body.classList.add('lg-done');
+  var welcome = document.getElementById('lg-welcome');
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!name) { welcome.textContent = 'Welcome'; lgRevealEnter(); return; }
+  if (reduce) { welcome.textContent = 'Welcome ' + name; lgRevealEnter(); return; }
+  welcome.textContent = 'Welcome ';
+  var span = document.createElement('span');
+  span.className = 'lg-name typing';
+  welcome.appendChild(span);
+  // Eased rAF typing: quick start, soft settle — snappier and smoother than
+  // a fixed per-character delay.
+  var n = name.length;
+  var dur = Math.max(450, Math.min(1200, n * 60));
+  var raf = window.requestAnimationFrame
+    ? function (fn) { return window.requestAnimationFrame(fn); }
+    : function (fn) { return setTimeout(function () { fn(Date.now()); }, 16); };
+  var t0 = null, shown = 0;
+  raf(function step(ts) {
+    if (t0 === null) t0 = ts;
+    var p = Math.min(1, (ts - t0) / dur);
+    var count = Math.round((1 - Math.pow(1 - p, 3)) * n);
+    if (count > shown) { shown = count; span.textContent = name.slice(0, count); }
+    if (p < 1) { raf(step); return; }
+    span.textContent = name;
+    span.classList.remove('typing');
+    lgRevealEnter();
+  });
+}
+
+// Complication slot above the passcode. Defaults to a live clock + date;
+// set localStorage "sh-complication" to customize, e.g.
+// {"type":"quote","value":"..."} or {"type":"emoji","value":"🚀"} or
+// {"type":"image","value":"/onboarding-image"}.
+var LG_MONTHS = ['january','february','march','april','may','june','july',
+                 'august','september','october','november','december'];
+function lgOrdinal(n) {
+  if (n % 100 >= 11 && n % 100 <= 13) return n + 'th';
+  return n + (['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+}
+function lgComplication() {
+  var el = document.getElementById('lg-complication');
+  var cfg = {};
+  try { cfg = JSON.parse(localStorage.getItem('sh-complication') || '{}') || {}; } catch (e) {}
+  var add = function (tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    el.appendChild(n);
+    return n;
+  };
+  if (cfg.type === 'quote') { add('div', 'lg-quote', cfg.value || 'Make it so.'); return; }
+  if (cfg.type === 'emoji') { add('div', 'lg-emoji', cfg.value || '🚀'); return; }
+  if (cfg.type === 'image' && cfg.value) {
+    var img = add('img', 'lg-image');
+    img.alt = '';
+    img.src = cfg.value;
+    return;
+  }
+  var t = add('div', 'lg-time');
+  var d = add('div', 'lg-date');
+  var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+  var tick = function () {
+    var now = new Date();
+    t.textContent = pad(now.getHours()) + ':' + pad(now.getMinutes());
+    d.textContent = lgOrdinal(now.getDate()) + ' of ' + LG_MONTHS[now.getMonth()];
+  };
+  tick();
+  setInterval(tick, 15000);
+}
+
+function doLogin() {
+  if (lgGranted) return;
+  var pwInput = document.getElementById('lg-password');
+  msg('');
+  var btn = document.getElementById('lg-submit');
+  var form = document.getElementById('login-form');
+  btn.disabled = true;
+  form.classList.add('busy');
+  fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+    body: JSON.stringify({ password: pwInput.value })
+  })
+    .then(function (r) {
+      if (r.status === 200) {
+        lgGranted = true;
+        // The field's job is done — take it away at once.
+        pwInput.value = '';
+        document.getElementById('lg-typed').textContent = '';
+        document.getElementById('login').style.display = 'none';
+        // The name comes from the public-ish app config (session exists now);
+        // welcome shows as soon as it arrives — no artificial delay.
+        fetch('/api/appconfig')
+          .then(function (x) { return x.json(); })
+          .then(function (cfg) { lgTypeWelcome(((cfg && cfg.owner) || '').trim()); })
+          .catch(function () { lgTypeWelcome(''); });
+        return { noop: true };
+      }
+      if (r.status === 429) {
+        var ra = r.headers.get('Retry-After');
+        return r.json().then(function (body) {
+          msg('Too many attempts. Try again ' + (ra ? 'in ' + ra + 's' : 'later') + '.');
+          return { noop: true };
+        });
+      }
+      if (r.status === 400) {
+        return r.json().then(function (b) { msg(b.error || 'Invalid request.'); return { noop: true }; });
+      }
+      // 401 — wrong password. Say nothing else.
+      msg('Incorrect password.');
+      return { noop: true };
+    })
+    .catch(function () { msg('Request failed — is ServerHub running?', 'info'); })
+    .finally(function () {
+      btn.disabled = false;
+      form.classList.remove('busy');
+      if (!lgGranted) {
+        pwInput.value = '';
+        lgSyncTyped();
+        pwInput.focus();
+      }
+    });
+}
+
+// ── Setup password later (from the opt-out page) ────────────────────────────
+
+function setupPassword() {
+  var pw = document.getElementById('so-pw').value;
+  if (pw.length < 8)  { msg('Password must be at least 8 characters.'); return; }
+  if (pw.length > 72) { msg('Password must be at most 72 bytes.'); return; }
+  if (pw !== document.getElementById('so-pw2').value) { msg('Passwords do not match.'); return; }
+  var btn = document.getElementById('so-btn');
+  btn.disabled = true;
+  fetch('/api/auth/setup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+    body: JSON.stringify({ password: pw })
+  })
+    .then(function (r) {
+      if (r.status === 200) { location.href = '/'; return { noop: true }; }
+      return r.json().then(function (b) {
+        msg(b.error || 'Setup failed (remote clients are not allowed).');
+        return { noop: true };
+      });
+    })
+    .catch(function () { msg('Request failed — is ServerHub running?', 'info'); })
+    .finally(function () { btn.disabled = false; });
+}
+
+// ── Boot ────────────────────────────────────────────────────────────────────
+
+function init() {
+  fetch('/api/auth/status')
+    .then(function (r) { return r.json(); })
+    .then(function (s) {
+      document.getElementById('onhost-port').textContent = location.port || '7070';
+
+      // Dress the page in the instance's look first thing.
+      applyLoginTheme(s.hue, s.shade);
+
+      if (s.auth_required && s.authenticated) { location.href = safeNext(); return; }
+
+      if (!s.onboarding_complete) {
+        if (s.setup_allowed) {
+          show('wizard');
+          wizShow(0);
+          document.getElementById('ob-next1').addEventListener('click', wizNext);
+          document.getElementById('ob-back2').addEventListener('click', function () { wizShow(0); });
+          document.getElementById('ob-back2b').addEventListener('click', function () { wizShow(1); });
+          document.getElementById('ob-next2b').addEventListener('click', wizNext);
+          // preventDefault on every Enter that changes step: without it the
+          // same keypress keeps travelling and clicks whatever button the new
+          // step just focused (e.g. Enter in the name field also picked "Yes").
+          document.getElementById('ob-pw').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('ob-pw2').focus(); }
+          });
+          document.getElementById('ob-pw2').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); wizNext(); }
+          });
+          document.getElementById('ob-back3').addEventListener('click', function () { wizShow(wantPassword ? 2 : 1); });
+          document.getElementById('ob-next3').addEventListener('click', wizNext);
+          document.getElementById('ob-back4').addEventListener('click', function () { wizShow(3); });
+          document.getElementById('ob-finish').addEventListener('click', function () { wizShow(5); });
+          var hueEl = document.getElementById('ob-hue');
+          var shadeEl = document.getElementById('ob-shade');
+          hueEl.addEventListener('input', function () { applyLoginTheme(+hueEl.value, obShade); });
+          shadeEl.addEventListener('input', function () { applyLoginTheme(obHue, +shadeEl.value); });
+          document.getElementById('ob-want-pw').addEventListener('click', function () {
+            wantPassword = true;
+            wizChoice = true;
+            wizShow(2); // password fields page
+          });
+          document.getElementById('ob-no-pw').addEventListener('click', function () {
+            wantPassword = false;
+            wizChoice = false; // keep the password dot visible, painted red
+            pwSet = false;     // nothing was set, nothing stays green
+            wizShow(3); // straight to appearance — no fields page
+          });
+          document.getElementById('ob-name').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); wizNext(); }
+          });
+          return;
+        }
+        show('onhost');
+        document.getElementById('onhost-retry').addEventListener('click', function () { location.reload(); });
+        return;
+      }
+
+      if (s.password_opt_out) {
+        show('nolock');
+        if (!s.setup_allowed) document.getElementById('nolock-setup').style.display = 'none';
+        document.getElementById('nolock-go').addEventListener('click', function () { location.href = '/'; });
+        document.getElementById('so-btn').addEventListener('click', setupPassword);
+        document.getElementById('so-pw').addEventListener('keydown', function (e) { if (e.key === 'Enter') setupPassword(); });
+        return;
+      }
+
+      // Password mode.
+      show('login');
+      lgComplication();
+      var lgInput = document.getElementById('lg-password');
+      document.getElementById('login-form').addEventListener('submit', function (e) { e.preventDefault(); doLogin(); });
+      lgInput.addEventListener('input', lgSyncTyped);
+      lgInput.focus();
+    })
+    .catch(function () {
+      msg('Cannot reach ServerHub.', 'info');
+    });
+}
+
+init();
+</script>
+</body>
+</html>
