@@ -126,8 +126,9 @@ step "Building all platforms (${VERSION})..."
 step "Checksumming artifacts..."
 HAVE_SHASUM=false
 command -v shasum >/dev/null 2>&1 && HAVE_SHASUM=true
+# One glob: every artifact (binaries, .exe and DMGs) is named serverhub-*.
 ARTIFACTS=()
-for f in dist/serverhub-* dist/*.dmg; do
+for f in dist/serverhub-*; do
   [[ -f "$f" ]] && ARTIFACTS+=("$f")
 done
 [[ ${#ARTIFACTS[@]} -gt 0 ]] || die "no artifacts found in dist/"
