@@ -3,7 +3,7 @@ servers:
     name: "nairwell"
     host: "192.168.1.10"
     port: 22
-    user: "matthew"
+    user: "youruser"
     key: "~/.ssh/id_ed25519"
     tags: ["homelab", "main"]
     notes: "Main server, runs Docker stacks"
@@ -21,7 +21,7 @@ servers:
     name: "rpi5"
     host: "192.168.1.20"
     port: 22
-    user: "matthew"
+    user: "youruser"
     key: "~/.ssh/id_ed25519"
     tags: ["homelab"]
     notes: "Raspberry Pi 5"

@@ -153,10 +153,11 @@ for i in $(seq 1 40); do
 done
 ```
 
-Read the URL from `./dev`'s output — in run mode it binds the developer's
-IP (e.g. `http://100.74.121.84:7080`), not loopback. The Guard only accepts
-the configured bind plus loopback names, and mutating requests need either
-`Content-Type: application/json` or `X-Requested-With: XMLHttpRequest`.
+Read the URL from `./dev`'s output — in run mode it binds the device-
+specific address set in the untracked `PRINFO.md` on this machine (gitignored;
+never commit it), e.g. `http://100.X.Y.Z:7080`, not loopback. The Guard only
+accepts the configured bind plus loopback names, and mutating requests need
+either `Content-Type: application/json` or `X-Requested-With: XMLHttpRequest`.
 
 Remember to stop it when done: `kill "$pid"`.
 
