@@ -5,7 +5,8 @@ server:
   open_browser: true
   # insecure_ignore_host_key: false  # true disables SSH host key verification (not recommended)
 
-theme: "green"            # green | blue | purple | coral
+hue: 120                  # accent colour (0-360)
+shade: 20                 # surface shade 0=black … 100=white
 
 terminal:                 # web terminal appearance (Settings → Web Terminal)
   background: "#0e0e10"
@@ -17,28 +18,3 @@ local:                    # the machine running ServerHub
   tags: []
   notes: ""
   quick_actions: []
-
-servers:
-  - id: nairwell
-    name: "nairwell"
-    host: "192.168.1.10"
-    port: 22
-    user: "matthew"
-    key: "~/.ssh/id_ed25519"
-    tags: ["homelab", "main"]
-    notes: "Main server, runs Docker stacks"
-    quick_actions:
-      - label: "Run backup"
-        command: "~/scripts/backup.sh"
-      - label: "Pull all images"
-        command: "docker compose -f ~/compose.yml pull"
-
-  - id: rpi5
-    name: "rpi5"
-    host: "192.168.1.20"
-    port: 22
-    user: "matthew"
-    key: "~/.ssh/id_ed25519"
-    tags: ["homelab"]
-    notes: "Raspberry Pi 5"
-    quick_actions: []

@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+// maxAuditEntries bounds the in-memory log so a long session cannot grow it
+// without limit (same idea as the debug collector's ring caps).
+const maxAuditEntries = 2000
+
 type AuditEntry struct {
 	Time     string `json:"time"`
 	ServerID string `json:"server_id"`
@@ -27,6 +31,9 @@ func LogAction(serverID, action string) {
 		ServerID: serverID,
 		Action:   action,
 	})
+	if len(globalAudit.entries) > maxAuditEntries {
+		globalAudit.entries = globalAudit.entries[len(globalAudit.entries)-maxAuditEntries:]
+	}
 }
 
 func GetAuditLog() []AuditEntry {

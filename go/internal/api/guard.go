@@ -128,3 +128,28 @@ func isMutating(method string) bool {
 	}
 	return false
 }
+
+// SecurityHeaders adds defence-in-depth response headers to every route.
+// Scripts/styles stay same-origin; inline script/style are needed because the
+// SPA uses inline handlers and generated style attributes. Images may be
+// external because app logos are user-supplied URLs.
+func SecurityHeaders(next http.Handler) http.Handler {
+	const csp = "default-src 'self'; " +
+		"script-src 'self' 'unsafe-inline'; " +
+		"style-src 'self' 'unsafe-inline'; " +
+		"img-src 'self' data: https: http:; " +
+		"font-src 'self'; " +
+		"connect-src 'self'; " +
+		"object-src 'none'; " +
+		"base-uri 'none'; " +
+		"form-action 'self'; " +
+		"frame-ancestors 'none'"
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Content-Security-Policy", csp)
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "no-referrer")
+		next.ServeHTTP(w, r)
+	})
+}

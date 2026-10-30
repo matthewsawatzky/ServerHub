@@ -1,0 +1,49 @@
+# ServerHub schedules — example
+# Copy the relevant parts into <config dir>/schedules.conf, or manage schedules
+# from the web UI (Schedules page). Runtime history lives in
+# schedules-state.json and is never written here.
+
+schedules:
+  - id: nightly-updates
+    name: "Nightly updates"
+    enabled: true
+    targets: [nairwell, rpi5]     # explicit server IDs (union with tags)
+    tags: [prod]                  # optional tags, resolved at run time
+    quick_action: pull-images     # stable quick-action ID...
+    # command: "sudo apt-get update && sudo apt-get -y upgrade"  # ...or a raw command
+    every: 24h
+    at: "03:30"                   # optional daily local time
+    overlap: skip                 # skip (default) | allow
+    timeout: 30m                  # optional command timeout
+
+  - id: weekday-health
+    name: "Weekday health check"
+    enabled: true
+    targets: [nairwell]
+    command: "uptime"
+    days: [mon, tue, wed, thu, fri]
+    at: "09:30"                   # weekly/custom-day cadence
+
+  - id: one-off-maintenance
+    name: "One-off maintenance"
+    enabled: false
+    targets: [__local__]          # the machine running ServerHub
+    command: "echo maintenance"
+    date: "2026-10-25"            # one-off date
+    at: "09:00"
+
+  - id: hourly-health
+    name: "Hourly health check"
+    enabled: false
+    targets: [nairwell]
+    quick_action: health-check
+    every: 1h
+    overlap: allow
+
+  # Advanced: a 5-field numeric cron expression (minute hour day month weekday).
+  - id: every-five-minutes
+    name: "Every five minutes"
+    enabled: false
+    targets: [nairwell]
+    command: "echo hello"
+    cron: "*/5 * * * *"

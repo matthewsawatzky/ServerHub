@@ -5,13 +5,13 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/fs"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -24,7 +24,9 @@ import (
 	"serverhub/internal/auth"
 	"serverhub/internal/config"
 	"serverhub/internal/debug"
+	"serverhub/internal/jobs"
 	"serverhub/internal/local"
+	"serverhub/internal/scheduler"
 	sshclient "serverhub/internal/ssh"
 	"serverhub/internal/storage"
 )
@@ -286,7 +288,7 @@ func doShutdown(srv *http.Server) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 func main() {
-	log.SetOutput(debug.NewLogInterceptor(io.Discard))
+	log.SetOutput(debug.NewLogInterceptor(os.Stderr))
 
 	printBanner()
 
@@ -329,15 +331,45 @@ func main() {
 	}
 	authMgr.Audit = api.LogAction
 
+	// Detached jobs cache lives next to config.yaml (remote tmux is the source
+	// of truth; jobs.json is rebuilt on demand).
+	jobReg := jobs.NewRegistry(filepath.Join(authDir, "jobs.json"))
+
 	sshclient.StartPolling(entries)
 
 	lc := local.New()
 	lc.Start()
 
 	mux := http.NewServeMux()
-	hub := api.NewHub(cfg, cfgPath, entries, lc)
+	hub := api.NewHub(cfg, cfgPath, entries, lc, jobReg)
 	authMgr.Theme = hub.ThemeValues // login page pre-applies the instance look
 	hub.SetAuthManager(authMgr)
+
+	sched, err := scheduler.New(
+		scheduler.DefinitionsPath(cfgPath),
+		scheduler.StatePath(authDir),
+		hub,
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR loading schedules: %v\n", err)
+		os.Exit(1)
+	}
+	// Real command outcomes feed back into schedule history.
+	jobReg.SetOnChange(sched.JobFinished)
+	sched.SetAudit(api.LogAction)
+	hub.SetScheduler(sched)
+	sched.Start()
+
+	// Reconcile running schedule jobs periodically so finished commands update
+	// schedule history without waiting for someone to view the jobs list.
+	go func() {
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for range t.C {
+			hub.ReconcileScheduleJobs()
+		}
+	}()
+
 	hub.RegisterRoutes(mux)
 	auth.RegisterRoutes(mux, authMgr)
 
@@ -418,7 +450,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		os.Exit(1)
 	}
-	mux.Handle("/", http.FileServer(http.FS(webRoot)))
+	mux.Handle("/", spaHandler{root: webRoot, files: http.FileServer(http.FS(webRoot))})
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Bind, cfg.Server.WebPort)
 	url := fmt.Sprintf("http://%s:%d", localHost(cfg.Server.Bind), cfg.Server.WebPort)
@@ -464,12 +496,15 @@ func main() {
 	}
 
 	// Middleware chain (outermost → innermost):
-	//   guard (Host allowlist + origin/preflight checks, audit V4)
+	//   security headers (CSP / anti-framing, every response)
+	//   → guard (Host allowlist + origin/preflight checks, audit V4)
 	//   → auth (session cookie; WS upgrades included, audit V1/V2)
 	//   → debug timing wrapper (captures authenticated requests only)
 	//   → mux
-	handler := api.NewGuard(cfg.Server.Bind, cfg.Server.WebPort).Middleware(
-		auth.Middleware(authMgr, debug.Middleware(mux)),
+	handler := api.SecurityHeaders(
+		api.NewGuard(cfg.Server.Bind, cfg.Server.WebPort).Middleware(
+			auth.Middleware(authMgr, debug.Middleware(mux)),
+		),
 	)
 
 	srv := &http.Server{
@@ -483,6 +518,46 @@ func main() {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// spaHandler serves embedded files and falls back to index.html for client
+// routes such as /<server-id>, /schedules, and /settings. API and asset paths
+// never fall through to the SPA.
+type spaHandler struct {
+	root  fs.FS
+	files http.Handler
+}
+
+func (h spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	p := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
+	if p == "" || p == "." {
+		h.files.ServeHTTP(w, r)
+		return
+	}
+	if p == "api" || strings.HasPrefix(p, "api/") {
+		http.NotFound(w, r)
+		return
+	}
+	if st, err := fs.Stat(h.root, p); err == nil {
+		if st.IsDir() {
+			http.NotFound(w, r)
+			return
+		}
+		h.files.ServeHTTP(w, r)
+		return
+	}
+	if path.Ext(p) != "" {
+		http.NotFound(w, r)
+		return
+	}
+	data, err := fs.ReadFile(h.root, "index.html")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Write(data)
 }
 
 // knownHostsPath is where SSH host keys are pinned (TOFU, audit V6).

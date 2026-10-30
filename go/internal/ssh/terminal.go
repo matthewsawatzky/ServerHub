@@ -46,7 +46,9 @@ type resizeMsg struct {
 }
 
 // ProxyTerminal opens an SSH PTY and proxies it over a WebSocket connection.
-func ProxyTerminal(ws *websocket.Conn, host string, port int, user, keyPath string) {
+// An empty command starts the user's login shell; a non-empty command runs in
+// the PTY instead (used to attach to a detached tmux job).
+func ProxyTerminal(ws *websocket.Conn, host string, port int, user, keyPath, command string) {
 	ws.SetReadLimit(WSReadLimit)
 	WSKeepalive(ws)
 	client, err := Dial(host, port, user, keyPath)
@@ -89,8 +91,13 @@ func ProxyTerminal(ws *websocket.Conn, host string, port int, user, keyPath stri
 		return
 	}
 
-	if err := sess.Shell(); err != nil {
-		ws.WriteMessage(websocket.TextMessage, []byte("\r\nShell start failed: "+err.Error()+"\r\n"))
+	if command == "" {
+		if err := sess.Shell(); err != nil {
+			ws.WriteMessage(websocket.TextMessage, []byte("\r\nShell start failed: "+err.Error()+"\r\n"))
+			return
+		}
+	} else if err := sess.Start(command); err != nil {
+		ws.WriteMessage(websocket.TextMessage, []byte("\r\nCommand start failed: "+err.Error()+"\r\n"))
 		return
 	}
 

@@ -23,9 +23,28 @@ type dashCard struct {
 	Load1   string  `json:"load1"`
 }
 
+// dashClock reports the hub process's wall clock and UTC offset so the UI can
+// relate schedule times to the viewer's own clock when they differ.
+type dashClock struct {
+	Time             int64  `json:"time"`
+	UtcOffsetMinutes int    `json:"utc_offset_minutes"`
+	TzName           string `json:"tz_name"`
+}
+
+func newDashClock() dashClock {
+	now := time.Now()
+	name, offset := now.Zone()
+	return dashClock{
+		Time:             now.Unix(),
+		UtcOffsetMinutes: offset / 60,
+		TzName:           name,
+	}
+}
+
 type dashSnapshot struct {
 	Local   *dashCard  `json:"local,omitempty"`
 	Servers []dashCard `json:"servers"`
+	Clock   dashClock  `json:"clock"`
 }
 
 // sseHub manages SSE client subscriptions.
@@ -70,6 +89,7 @@ func (h *Hub) buildDashSnapshot() dashSnapshot {
 
 	snap := dashSnapshot{
 		Servers: make([]dashCard, 0, len(h.cfg.Servers)),
+		Clock:   newDashClock(),
 	}
 
 	// Local machine card

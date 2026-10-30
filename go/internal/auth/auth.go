@@ -255,6 +255,7 @@ func (m *Manager) ChangePassword(oldPassword, newPassword string) error {
 		}
 		return err
 	}
+	m.limiter.reset()
 	m.audit("password changed — all sessions signed out")
 	return nil
 }

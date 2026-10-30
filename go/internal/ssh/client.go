@@ -1,9 +1,7 @@
 package ssh
 
 import (
-	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -115,11 +113,13 @@ func recordKnownHost(remote net.Addr, key gossh.PublicKey) error {
 
 type RawStats struct {
 	Uptime   int64  `json:"uptime"`
-	CPU      int    `json:"cpu"`
+	CPUTotal uint64 `json:"cpu_total"`
+	CPUIdle  uint64 `json:"cpu_idle"`
 	MemTotal int64  `json:"mem_total"`
 	MemAvail int64  `json:"mem_avail"`
 	Disk     string `json:"disk"`
 	Load     string `json:"load"`
+	BootID   string `json:"boot_id"`
 }
 
 type Container struct {
@@ -128,13 +128,18 @@ type Container struct {
 	State  string `json:"state"`
 }
 
+// statsCmd returns raw kernel counters; CPU percentage is derived by the
+// poller from consecutive samples (same approach as the local collector), so
+// there is no dependency on top/mpstat and no fixed sampling window.
 const statsCmd = `uptime_sec=$(awk '{print int($1)}' /proc/uptime); ` +
-	`cpu=$(top -bn1 | grep 'Cpu(s)' | awk '{print $2+$4}' | cut -d. -f1 2>/dev/null || echo 0); ` +
+	`cpu=$(awk '/^cpu /{t=0; for(i=2;i<=NF;i++) t+=$i; print t, $5+$6; exit}' /proc/stat); ` +
+	`set -- $cpu; cpu_total=${1:-0}; cpu_idle=${2:-0}; ` +
 	`mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}'); ` +
 	`mem_avail=$(grep MemAvailable /proc/meminfo | awk '{print $2}'); ` +
 	`disk=$(df / --output=used,size 2>/dev/null | tail -1 | tr -s ' '); ` +
 	`load=$(cat /proc/loadavg); ` +
-	`echo "{\"uptime\":$uptime_sec,\"cpu\":${cpu:-0},\"mem_total\":$mem_total,\"mem_avail\":$mem_avail,\"disk\":\"$disk\",\"load\":\"$load\"}"`
+	`boot_id=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null); ` +
+	`echo "{\"uptime\":$uptime_sec,\"cpu_total\":${cpu_total:-0},\"cpu_idle\":${cpu_idle:-0},\"mem_total\":$mem_total,\"mem_avail\":$mem_avail,\"disk\":\"$disk\",\"load\":\"$load\",\"boot_id\":\"$boot_id\"}"`
 
 const dockerCmd = `docker ps -a --format '{"name":"{{.Names}}","status":"{{.Status}}","state":"{{.State}}"}'`
 
@@ -204,35 +209,6 @@ func Dial(host string, port int, user, keyPath string) (*gossh.Client, error) {
 	return gossh.NewClient(sshConn, chans, reqs), nil
 }
 
-func RunCommand(client *gossh.Client, cmd string) (string, error) {
-	sess, err := client.NewSession()
-	if err != nil {
-		return "", fmt.Errorf("new session: %w", err)
-	}
-	defer sess.Close()
-	out, err := sess.CombinedOutput(cmd)
-	return strings.TrimSpace(string(out)), err
-}
-
-func CollectStats(host string, port int, user, keyPath string) (*RawStats, error) {
-	client, err := Dial(host, port, user, keyPath)
-	if err != nil {
-		return nil, err
-	}
-	defer client.Close()
-
-	out, err := RunCommand(client, statsCmd)
-	if err != nil {
-		return nil, fmt.Errorf("stats command: %w (output: %s)", err, out)
-	}
-
-	var stats RawStats
-	if err := json.Unmarshal([]byte(out), &stats); err != nil {
-		return nil, fmt.Errorf("parsing stats json %q: %w", out, err)
-	}
-	return &stats, nil
-}
-
 // containerNamePattern is Docker's own charset for container names
 // ([a-zA-Z0-9][a-zA-Z0-9_.-]*). Anything else a remote host reports is
 // attacker-controlled text — dropped at the boundary (XSS defence in depth).
@@ -243,59 +219,4 @@ var containerNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`)
 // client-side, so only the name needs this gate.
 func SanitizeContainer(c Container) bool {
 	return c.Name != "" && len(c.Name) <= 128 && containerNamePattern.MatchString(c.Name)
-}
-
-func CollectContainers(host string, port int, user, keyPath string) ([]Container, error) {
-	client, err := Dial(host, port, user, keyPath)
-	if err != nil {
-		return nil, err
-	}
-	defer client.Close()
-
-	out, err := RunCommand(client, dockerCmd)
-	if err != nil {
-		// docker might not be installed — treat as empty
-		return nil, nil
-	}
-
-	var containers []Container
-	for _, line := range strings.Split(out, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var c Container
-		if err := json.Unmarshal([]byte(line), &c); err == nil && SanitizeContainer(c) {
-			containers = append(containers, c)
-		}
-	}
-	return containers, nil
-}
-
-func RunAction(host string, port int, user, keyPath, cmd string) (string, error) {
-	return RunActionContext(context.Background(), host, port, user, keyPath, cmd)
-}
-
-// RunActionContext runs a command over SSH and closes the connection when the
-// context is cancelled (used by the quick-action Stop button).
-func RunActionContext(ctx context.Context, host string, port int, user, keyPath, cmd string) (string, error) {
-	client, err := Dial(host, port, user, keyPath)
-	if err != nil {
-		return "", err
-	}
-	var closeOnce sync.Once
-	closeClient := func() { closeOnce.Do(func() { client.Close() }) }
-	defer closeClient()
-
-	done := make(chan struct{})
-	defer close(done)
-	go func() {
-		select {
-		case <-ctx.Done():
-			closeClient()
-		case <-done:
-		}
-	}()
-
-	return RunCommand(client, cmd)
 }

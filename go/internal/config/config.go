@@ -14,7 +14,8 @@ import (
 )
 
 const defaultConfig = `# ServerHub configuration
-# Edit this file to add your servers, then restart ServerHub.
+# Controls how ServerHub runs (appearance, network, terminal defaults).
+# The server inventory lives in servers.conf next to this file.
 # Full documentation: https://github.com/your-org/serverhub
 
 server:
@@ -23,7 +24,6 @@ server:
   open_browser: true
   # insecure_ignore_host_key: false  # true disables SSH host key verification (MITM risk)
 
-theme: "green"          # green | blue | purple | coral
 hue: 120                # accent colour (0-360) — set by the onboarding wizard / Settings
 shade: 20               # surface shade 0=black … 100=white
 
@@ -31,10 +31,13 @@ terminal:
   background: "#0e0e10" # web terminal background
   foreground: "#e0e0e8" # web terminal default text
   accent: "#639922"     # web terminal cursor / chrome accent
+`
 
-servers: []
-# Add servers like this:
+const defaultServers = `# ServerHub server inventory
+# Each entry is one remote machine. Add servers from the dashboard, or edit
+# this file by hand and restart ServerHub.
 #
+# servers:
 #   - id: myserver
 #     name: "myserver"
 #     host: "192.168.1.10"
@@ -46,6 +49,29 @@ servers: []
 #     quick_actions:
 #       - label: "Restart nginx"
 #         command: "sudo systemctl restart nginx"
+
+servers: []
+`
+
+const defaultSchedules = `# ServerHub schedules
+# Each entry starts a detached tmux job on one or more servers. Definitions
+# are managed from the Schedules page or edited here and reloaded on restart.
+# Runtime history lives in schedules-state.json.
+#
+# schedules:
+#   - id: nightly-updates
+#     name: "Nightly updates"
+#     enabled: true
+#     targets: [web-1, web-2]      # explicit server IDs
+#     tags: [prod]                 # optional union with targets
+#     quick_action: pull-images    # stable quick-action ID...
+#     # command: "..."             # ...or a raw shell command
+#     every: 24h
+#     at: "03:30"                  # optional local time-of-day
+#     overlap: skip                # skip (default) | allow
+#     timeout: 30m
+
+schedules: []
 `
 
 // Dir returns the directory ServerHub's state lives in (see storage.Dir).
@@ -55,9 +81,9 @@ func Dir() (string, error) { return storage.Dir() }
 // DefaultPath returns the canonical path to config.yaml inside Dir().
 func DefaultPath() (string, error) { return storage.DefaultPath() }
 
-// EnsureDefault creates the state dir and writes a starter config.yaml if one
-// does not already exist. Returns (path, created, error). created is true only
-// on first run.
+// EnsureDefault creates the state dir and writes starter config.yaml,
+// servers.conf, and schedules.conf files if they do not already exist.
+// Returns (path, created, error). created is true only on the first run.
 func EnsureDefault() (path string, created bool, err error) {
 	dir, err := storage.Dir()
 	if err != nil {
@@ -72,6 +98,21 @@ func EnsureDefault() (path string, created bool, err error) {
 	if err != nil {
 		return "", false, err
 	}
+
+	serversPath := ServersPath(path)
+	if _, err := os.Stat(serversPath); os.IsNotExist(err) {
+		if err := storage.Write(serversPath, []byte(defaultServers)); err != nil {
+			return "", false, fmt.Errorf("writing default servers: %w", err)
+		}
+	}
+
+	schedulesPath := SchedulesPath(path)
+	if _, err := os.Stat(schedulesPath); os.IsNotExist(err) {
+		if err := storage.Write(schedulesPath, []byte(defaultSchedules)); err != nil {
+			return "", false, fmt.Errorf("writing default schedules: %w", err)
+		}
+	}
+
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		if err := storage.Write(path, []byte(defaultConfig)); err != nil {
 			return "", false, fmt.Errorf("writing default config: %w", err)
@@ -79,6 +120,28 @@ func EnsureDefault() (path string, created bool, err error) {
 		return path, true, nil
 	}
 	return path, false, nil
+}
+
+// ServersPath returns the inventory file that sits next to configPath.
+func ServersPath(configPath string) string {
+	return filepath.Join(filepath.Dir(configPath), "servers.conf")
+}
+
+// SchedulesPath returns the schedule definitions file next to configPath.
+func SchedulesPath(configPath string) string {
+	return filepath.Join(filepath.Dir(configPath), "schedules.conf")
+}
+
+// serversFile is the on-disk shape of servers.conf.
+type serversFile struct {
+	Servers []Host `yaml:"servers"`
+}
+
+// diskConfig is config.yaml as read from disk. Servers is only present for
+// legacy installs (pre-split); it is migrated into servers.conf on load.
+type diskConfig struct {
+	Config  `yaml:",inline"`
+	Servers []Host `yaml:"servers,omitempty"`
 }
 
 type ServerConfig struct {
@@ -91,10 +154,13 @@ type ServerConfig struct {
 }
 
 type QuickAction struct {
+	ID         string `yaml:"id,omitempty"          json:"id,omitempty"` // stable identity (derived from label when absent)
 	Label      string `yaml:"label"                 json:"label"`
 	Command    string `yaml:"command"               json:"command"`
+	Mode       string `yaml:"mode,omitempty"        json:"mode,omitempty"`        // "" (shell) | "detached"
+	Session    string `yaml:"session,omitempty"     json:"session,omitempty"`     // fixed detached tmux session suffix
 	LastRan    int64  `yaml:"last_ran,omitempty"    json:"last_ran,omitempty"`    // unix seconds
-	LastStatus string `yaml:"last_status,omitempty" json:"last_status,omitempty"` // success | error
+	LastStatus string `yaml:"last_status,omitempty" json:"last_status,omitempty"` // success | error | stopped | started
 }
 
 type Host struct {
@@ -106,6 +172,7 @@ type Host struct {
 	Key          string          `yaml:"key"           json:"key"`
 	Tags         []string        `yaml:"tags"          json:"tags"`
 	Notes        string          `yaml:"notes"         json:"notes"`
+	Favorite     *bool           `yaml:"favorite,omitempty" json:"favorite,omitempty"`
 	QuickActions []QuickAction   `yaml:"quick_actions" json:"quick_actions"`
 	Terminal     *TerminalConfig `yaml:"terminal,omitempty" json:"terminal,omitempty"` // per-server colour override
 }
@@ -122,20 +189,44 @@ type LocalConfig struct {
 	Name         string        `yaml:"name"          json:"name"`
 	Tags         []string      `yaml:"tags"          json:"tags"`
 	Notes        string        `yaml:"notes"         json:"notes"`
+	Favorite     *bool         `yaml:"favorite,omitempty" json:"favorite,omitempty"`
 	QuickActions []QuickAction `yaml:"quick_actions" json:"quick_actions"`
 }
 
+// App is a user-defined app link shown in the dashboard and app library.
+type App struct {
+	ID         string `yaml:"id" json:"id"`
+	Name       string `yaml:"name" json:"name"`
+	URL        string `yaml:"url" json:"url"`
+	Logo       string `yaml:"logo,omitempty" json:"logo,omitempty"`               // stored media filename
+	LogoSource string `yaml:"logo_source,omitempty" json:"logo_source,omitempty"` // original remote URL
+	Favorite   bool   `yaml:"favorite,omitempty" json:"favorite,omitempty"`
+}
+
 type Config struct {
-	Server        ServerConfig    `yaml:"server"         json:"server"`
-	Hue           int             `yaml:"hue"            json:"hue"`
-	Shade         int             `yaml:"shade"          json:"shade"`
-	Animations    *bool           `yaml:"animations"     json:"animations"` // nil means true (default on)
-	Terminal      TerminalConfig  `yaml:"terminal"       json:"terminal"`   // global web-terminal colours
-	LocalTerminal *TerminalConfig `yaml:"local_terminal,omitempty" json:"local_terminal,omitempty"`
-	Owner         string          `yaml:"owner"          json:"owner"` // the user's name, set during onboarding (greeting)
-	Local         LocalConfig     `yaml:"local"          json:"local"`
-	LocalName     string          `yaml:"local_name,omitempty" json:"local_name,omitempty"` // legacy; migrated into Local.Name
-	Servers       []Host          `yaml:"servers"        json:"servers"`
+	Server                 ServerConfig    `yaml:"server"         json:"server"`
+	Hue                    int             `yaml:"hue"            json:"hue"`
+	Shade                  int             `yaml:"shade"          json:"shade"`
+	Animations             *bool           `yaml:"animations"     json:"animations"` // nil means true (default on)
+	Terminal               TerminalConfig  `yaml:"terminal"       json:"terminal"`   // global web-terminal colours
+	LocalTerminal          *TerminalConfig `yaml:"local_terminal,omitempty" json:"local_terminal,omitempty"`
+	Owner                  string          `yaml:"owner"           json:"owner"`                     // the user's name, set during onboarding (greeting)
+	SizeUnits              string          `yaml:"size_units,omitempty" json:"size_units,omitempty"` // GB (decimal) or GiB (binary)
+	BackgroundImage        string          `yaml:"background_image,omitempty" json:"background_image,omitempty"`
+	BackgroundBlur         int             `yaml:"background_blur,omitempty"  json:"background_blur,omitempty"`
+	BackgroundColor        string          `yaml:"background_color,omitempty" json:"background_color,omitempty"`
+	BackgroundColorEnabled *bool           `yaml:"background_color_enabled,omitempty" json:"background_color_enabled,omitempty"`
+	SurfaceColor           string          `yaml:"surface_color,omitempty"    json:"surface_color,omitempty"`
+	SurfaceColorEnabled    *bool           `yaml:"surface_color_enabled,omitempty" json:"surface_color_enabled,omitempty"`
+	SurfaceShade           *int            `yaml:"surface_shade,omitempty"    json:"surface_shade,omitempty"`
+	DashboardOrder         []string        `yaml:"dashboard_order,omitempty"  json:"dashboard_order,omitempty"`
+	DashboardHidden        []string        `yaml:"dashboard_hidden,omitempty" json:"dashboard_hidden,omitempty"`
+	DashboardDays          *bool           `yaml:"dashboard_days,omitempty"   json:"dashboard_days,omitempty"`
+	Apps                   []App           `yaml:"apps,omitempty" json:"apps,omitempty"`
+	Local                  LocalConfig     `yaml:"local"          json:"local"`
+	LocalName              string          `yaml:"local_name,omitempty" json:"local_name,omitempty"` // legacy; migrated into Local.Name
+	// Servers is persisted in servers.conf, not config.yaml (hence yaml:"-").
+	Servers []Host `yaml:"-" json:"servers"`
 }
 
 func Load(path string) (*Config, error) {
@@ -144,24 +235,45 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("reading config: %w", err)
 	}
 
-	// The file holds hostnames, users and quick-action commands; correct a
-	// group/world-readable file and warn (audit V10).
+	// The config file holds hostnames, users and quick-action commands (and
+	// servers.conf holds the rest); correct a group/world-readable file and
+	// warn (audit V10).
 	if changed, err := storage.FixPermissions(path); err == nil && changed {
 		log.Printf("warning: %s was group/world-readable — correcting to 0600", path)
 	} else if err != nil && !os.IsNotExist(err) {
 		log.Printf("warning: could not check permissions on %s: %v", path, err)
 	}
 
-	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	var disk diskConfig
+	if err := yaml.Unmarshal(data, &disk); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
+	cfg := disk.Config
+	legacy := disk.Servers
 
-	if err := validate(&cfg); err != nil {
-		return nil, fmt.Errorf("invalid config: %w", err)
+	serversPath := ServersPath(path)
+	fileServers, haveServersFile, err := loadServersFile(serversPath)
+	if err != nil {
+		return nil, err
 	}
 
-	// Expand ~ in key paths
+	// Legacy installs kept the inventory inside config.yaml. Migrate it once,
+	// preferring servers.conf if both exist.
+	migrate := false
+	switch {
+	case len(legacy) > 0 && !haveServersFile:
+		cfg.Servers = legacy
+		migrate = true
+		log.Printf("migrating %d server(s) from %s to %s", len(legacy), path, serversPath)
+	case len(legacy) > 0 && haveServersFile:
+		cfg.Servers = fileServers
+		migrate = true
+		log.Printf("warning: %s still contains a servers block — using %s and removing the legacy copy", path, serversPath)
+	default:
+		cfg.Servers = fileServers
+	}
+
+	// Normalise before validation/serialisation.
 	for i := range cfg.Servers {
 		cfg.Servers[i].Key = expandHome(cfg.Servers[i].Key)
 		if cfg.Servers[i].Port == 0 {
@@ -169,7 +281,37 @@ func Load(path string) (*Config, error) {
 		}
 	}
 
+	if err := validate(&cfg); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
+	if migrate {
+		if err := SaveAll(path, &cfg); err != nil {
+			return nil, fmt.Errorf("migrating server inventory: %w", err)
+		}
+	}
+
 	return &cfg, nil
+}
+
+// loadServersFile reads servers.conf. The second return value reports whether
+// the file exists (an empty file still counts as authoritative).
+func loadServersFile(path string) ([]Host, bool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("reading servers: %w", err)
+	}
+	if changed, err := storage.FixPermissions(path); err == nil && changed {
+		log.Printf("warning: %s was group/world-readable — correcting to 0600", path)
+	}
+	var f serversFile
+	if err := yaml.Unmarshal(data, &f); err != nil {
+		return nil, true, fmt.Errorf("parsing servers: %w", err)
+	}
+	return f.Servers, true, nil
 }
 
 func validate(cfg *Config) error {
@@ -219,6 +361,14 @@ func validate(cfg *Config) error {
 	if cfg.Local.QuickActions == nil {
 		cfg.Local.QuickActions = []QuickAction{}
 	}
+	if cfg.Local.Favorite == nil {
+		t := true // the local machine is favorited by default
+		cfg.Local.Favorite = &t
+	}
+	cfg.Local.QuickActions = NormalizeQuickActions(cfg.Local.QuickActions, false)
+	for i := range cfg.Servers {
+		cfg.Servers[i].QuickActions = NormalizeQuickActions(cfg.Servers[i].QuickActions, true)
+	}
 
 	ids := make(map[string]bool)
 	for i, s := range cfg.Servers {
@@ -233,6 +383,9 @@ func validate(cfg *Config) error {
 		}
 		if s.User == "" {
 			return fmt.Errorf("server %q: user is required", s.ID)
+		}
+		if s.Port < 0 || s.Port > 65535 {
+			return fmt.Errorf("server %q: port must be between 1 and 65535", s.ID)
 		}
 		if ids[s.ID] {
 			return fmt.Errorf("duplicate server id %q", s.ID)
@@ -295,14 +448,108 @@ func ValidateID(id string) error {
 	return nil
 }
 
-// Save writes cfg back to path in YAML format (atomic, mode 0600).
+// NormalizeQuickActions trims entries, derives stable IDs for actions that
+// don't have one, de-duplicates IDs, and validates the mode/session pair.
+// allowDetached is false for the local machine, which has no tmux jobs.
+func NormalizeQuickActions(list []QuickAction, allowDetached bool) []QuickAction {
+	out := make([]QuickAction, 0, len(list))
+	seen := make(map[string]bool, len(list))
+	for _, qa := range list {
+		qa.Label = strings.TrimSpace(qa.Label)
+		qa.Command = strings.TrimSpace(qa.Command)
+		if qa.Label == "" || qa.Command == "" {
+			continue
+		}
+
+		mode := strings.ToLower(strings.TrimSpace(qa.Mode))
+		if mode != "detached" || !allowDetached {
+			mode = ""
+		}
+		qa.Mode = mode
+		qa.Session = strings.TrimSpace(qa.Session)
+		if qa.Mode != "detached" || ValidateID(qa.Session) != nil {
+			qa.Session = ""
+		}
+
+		id := strings.TrimSpace(qa.ID)
+		if ValidateID(id) != nil {
+			id = Slugify(id)
+			if ValidateID(id) != nil {
+				id = Slugify(qa.Label)
+			}
+			if ValidateID(id) != nil {
+				id = "action"
+			}
+		}
+		base := id
+		for n := 2; seen[id] && n < 10000; n++ {
+			suffix := fmt.Sprintf("-%d", n)
+			prefix := base
+			if len(prefix) > maxIDLength-len(suffix) {
+				prefix = prefix[:maxIDLength-len(suffix)]
+			}
+			prefix = strings.TrimRight(prefix, "-")
+			if prefix == "" {
+				prefix = "action"
+			}
+			id = prefix + suffix
+		}
+		qa.ID = id
+		seen[id] = true
+		out = append(out, qa)
+	}
+	return out
+}
+
+// Save writes the app settings in cfg to config.yaml (atomic, mode 0600).
+// The server inventory is not included — use SaveServers or SaveAll.
 func Save(path string, cfg *Config) error {
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
-	header := []byte("# ServerHub configuration — managed by the UI\n# Manual edits are supported; restart ServerHub to reload.\n\n")
+	header := []byte("# ServerHub configuration — managed by the UI\n# Server inventory lives in servers.conf.\n# Manual edits are supported; restart ServerHub to reload.\n\n")
 	return storage.Write(path, append(header, data...))
+}
+
+// SaveServers writes the inventory to servers.conf next to configPath.
+func SaveServers(configPath string, servers []Host) error {
+	if servers == nil {
+		servers = []Host{}
+	}
+	data, err := yaml.Marshal(serversFile{Servers: servers})
+	if err != nil {
+		return fmt.Errorf("marshaling servers: %w", err)
+	}
+	header := []byte("# ServerHub server inventory — managed by the UI\n# Manual edits are supported; restart ServerHub to reload.\n\n")
+	return storage.Write(ServersPath(configPath), append(header, data...))
+}
+
+// SaveAll writes both the app settings and the server inventory. The inventory
+// goes first so a legacy config.yaml is never stripped before its servers have
+// been persisted elsewhere; if the second write fails, servers.conf is restored
+// so the two files do not disagree.
+func SaveAll(path string, cfg *Config) error {
+	serversPath := ServersPath(path)
+	previous, readErr := os.ReadFile(serversPath)
+	hadServersFile := readErr == nil
+	if readErr != nil && !os.IsNotExist(readErr) {
+		return fmt.Errorf("reading servers for rollback: %w", readErr)
+	}
+	if err := SaveServers(path, cfg.Servers); err != nil {
+		return err
+	}
+	if err := Save(path, cfg); err != nil {
+		if hadServersFile {
+			if restoreErr := storage.Write(serversPath, previous); restoreErr != nil {
+				log.Printf("warning: could not restore %s after failed config save: %v", serversPath, restoreErr)
+			}
+		} else if removeErr := os.Remove(serversPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			log.Printf("warning: could not remove %s after failed config save: %v", serversPath, removeErr)
+		}
+		return err
+	}
+	return nil
 }
 
 // Slugify converts a display name to a safe server ID.

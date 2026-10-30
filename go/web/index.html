@@ -13,6 +13,10 @@
     <div class="sidebar-brand">
       <div class="brand-name">SERVER HUB</div>
       <div class="brand-sub" id="brand-sub">Loading…</div>
+      <button type="button" class="sidebar-toggle-btn" id="sidebar-collapse-btn"
+              onclick="toggleSidebar()" title="Collapse sidebar" aria-label="Collapse sidebar">
+        <span id="sidebar-collapse-icon"></span>
+      </button>
     </div>
 
     <nav class="sidebar-nav">
@@ -20,9 +24,21 @@
         <span id="nav-dashboard-icon"></span>
         Dashboard
       </div>
-      <div class="nav-item" id="nav-local" onclick="showDetail('__local__')">
-        <span id="nav-local-icon"></span>
-        This Machine
+      <div class="nav-item" id="nav-servers" onclick="showServers()">
+        <span id="nav-servers-icon"></span>
+        Servers
+      </div>
+      <div class="nav-item" id="nav-apps" onclick="showApps()">
+        <span id="nav-apps-icon"></span>
+        Apps
+      </div>
+      <div class="nav-item" id="nav-schedules" onclick="showSchedules()">
+        <span id="nav-schedules-icon"></span>
+        Schedules
+      </div>
+      <div class="nav-item" id="nav-docs" onclick="showDocs()">
+        <span id="nav-docs-icon"></span>
+        Docs
       </div>
     </nav>
 
@@ -50,28 +66,152 @@
 
   <!-- Main content -->
   <main id="main">
+    <div id="main-bg" aria-hidden="true"></div>
+    <button type="button" class="sidebar-toggle-btn sidebar-open-btn" id="sidebar-open-btn"
+            onclick="toggleSidebar()" title="Show sidebar" aria-label="Show sidebar">
+      <span id="sidebar-open-icon"></span>
+    </button>
+
     <!-- Dashboard view -->
     <div id="view-dashboard">
-      <h1 class="page-title">Overview</h1>
-      <div class="greeting" id="dashboard-greeting" style="display:none"></div>
-
-      <div class="section" id="local-section" style="display:none">
-        <div class="section-title">This Machine</div>
-        <div id="local-cards" class="cards-grid"></div>
+      <div class="dashboard-hero">
+        <div class="dashboard-greeting" id="dashboard-greeting">Hello</div>
+        <div class="dashboard-time" id="dashboard-time">--:--:--</div>
+        <div class="dashboard-date" id="dashboard-date"></div>
+        <div class="clock-note" id="dashboard-time-note"></div>
       </div>
 
-      <div class="section">
-        <div class="section-title">Servers</div>
-        <div id="server-cards" class="cards-grid">
-          <div class="loading-msg">Connecting to servers…</div>
+      <div class="dashboard-week-wrap">
+        <div id="dashboard-week" class="dashboard-week"></div>
+      </div>
+
+      <div class="section" id="dashboard-services-section">
+        <div class="section-title">Apps</div>
+        <div id="dashboard-services" class="dashboard-services"></div>
+      </div>
+
+      <div class="section" id="favorites-section">
+        <div class="section-title">Favorites</div>
+        <div id="favorite-cards" class="favorites-row"></div>
+      </div>
+
+      <div class="section" id="dashboard-qa-section">
+        <div class="section-title">Quick actions</div>
+        <div class="dash-qa-list" id="dashboard-qa-list"></div>
+        <div class="qa-output-field" id="dash-qa-output-field" style="display:none">
+          <div class="qa-output-label">
+            <span>Output</span>
+            <span class="qa-spinner"></span>
+          </div>
+          <pre class="qa-output empty" id="dash-qa-output">No output yet.</pre>
         </div>
+      </div>
+    </div>
+
+    <!-- App library -->
+    <div id="view-apps" style="display:none">
+      <div class="servers-header-row">
+        <h1 class="page-title">App library</h1>
+        <span class="apps-count" id="apps-count"></span>
+        <input id="app-search" type="search" placeholder="Search apps…" aria-label="Search apps" autocomplete="off">
+        <button class="btn btn-primary" onclick="openAppModal()">
+          <span id="apps-add-icon"></span>
+          New app
+        </button>
+      </div>
+      <div id="apps-grid" class="apps-grid">
+        <div class="loading-msg">Loading apps…</div>
+      </div>
+    </div>
+
+    <!-- Servers view -->
+    <div id="view-servers" style="display:none">
+      <div class="servers-header-row">
+        <h1 class="page-title">Servers</h1>
+        <input id="global-search" type="search" placeholder="Search servers by name… (⌘L)"
+               aria-label="Search servers" autocomplete="off">
+      </div>
+      <div id="server-cards" class="cards-grid">
+        <div class="loading-msg">Connecting to servers…</div>
+      </div>
+      <div class="servers-add-more">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="openAddServer()">
+          Add more servers
+        </button>
+      </div>
+    </div>
+
+    <!-- Schedules view -->
+    <div id="view-schedules" style="display:none">
+      <div class="schedules-header">
+        <div class="schedules-title-wrap">
+          <h1 class="page-title">Schedules</h1>
+          <span class="beta-badge">beta</span>
+        </div>
+        <button class="btn btn-primary" id="schedules-new-btn" onclick="openScheduleModal()">
+          <span id="schedule-add-icon"></span>
+          New schedule
+        </button>
+      </div>
+      <div class="clock-note sched-tz-note" id="sched-tz-note"></div>
+      <div class="sched-config-warning" id="sched-config-warning" style="display:none" role="alert"></div>
+
+      <div class="schedules-toolbar">
+        <div class="sched-view-toggle ui-segmented" id="sched-view-toggle" role="tablist" aria-label="Schedule view">
+          <button type="button" class="btn btn-ghost btn-sm active" id="sched-view-month"
+                  onclick="setScheduleView('month')">Month</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="sched-view-list"
+                  onclick="setScheduleView('list')">List</button>
+        </div>
+        <label class="ui-toggle sched-show-paused">
+          <input type="checkbox" id="sched-show-paused" checked onchange="renderScheduleViews()">
+          <span class="ui-toggle-box"></span>
+          Show paused
+        </label>
+      </div>
+
+      <div id="schedule-month-view">
+        <div class="calendar-toolbar">
+          <span id="calendar-label" class="calendar-label"></span>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="scheduleMonthOffset(-1)">‹</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="scheduleMonthToday()">Today</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="scheduleMonthOffset(1)">›</button>
+        </div>
+        <div class="calendar-scroll">
+          <div id="schedule-calendar" class="calendar-grid"></div>
+        </div>
+        <p class="schedules-hint">
+          Click a day for the hourly view, then click an empty hour to create a run at that time.
+          Click an existing event for details. Runs missed while ServerHub was offline are skipped.
+        </p>
+      </div>
+
+      <div id="schedule-day-view" style="display:none">
+        <div class="calendar-toolbar">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="showScheduleMonth()">← Month</button>
+          <span id="schedule-day-label" class="calendar-label"></span>
+        </div>
+        <div class="day-calendar" id="schedule-day-hours"></div>
+      </div>
+
+      <div id="schedule-list-view" style="display:none">
+        <div id="schedule-list"></div>
+      </div>
+    </div>
+
+    <!-- Docs view -->
+    <div id="view-docs" style="display:none">
+      <h1 class="page-title">Docs</h1>
+      <div class="settings-section">
+        <h3>Documentation</h3>
+        <p>ServerHub docs are on the way — runbooks, server notes, and how-tos will live here.</p>
       </div>
     </div>
 
     <!-- Detail view -->
     <div id="view-detail" style="display:none">
       <div class="detail-header">
-        <button class="back-btn" onclick="showDashboard()">
+        <button class="back-btn" onclick="goBackFromDetail()">
           <span id="back-icon"></span>
           Back
         </button>
@@ -95,23 +235,6 @@
         <div class="action-row" id="action-row"></div>
       </div>
 
-      <!-- Docker containers -->
-      <div class="section" id="containers-section">
-        <div class="section-title">Containers</div>
-        <div class="table-wrap">
-          <table id="containers-table">
-            <thead>
-              <tr>
-                <th>Name</th><th>State</th><th>Status</th><th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="containers-body">
-              <tr><td colspan="4" style="color:var(--text-dim);font-size:12px;padding:16px 10px;">Loading…</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
       <!-- Quick actions -->
       <div class="section" id="qa-section">
         <div class="section-title section-title-row">
@@ -131,11 +254,125 @@
         </div>
       </div>
 
+      <!-- Detail tabs -->
+      <div class="detail-tabs" role="tablist">
+        <button type="button" class="detail-tab active" id="detail-tab-docker"
+                role="tab" onclick="showDetailTab('docker')">Docker</button>
+        <button type="button" class="detail-tab" id="detail-tab-network"
+                role="tab" onclick="showDetailTab('network')">Network</button>
+        <button type="button" class="detail-tab" id="detail-tab-system"
+                role="tab" onclick="showDetailTab('system')">System</button>
+      </div>
+
+      <div class="detail-panel" id="detail-panel-docker" role="tabpanel">
+      <!-- Detached tmux jobs -->
+      <div class="section" id="jobs-section">
+        <div class="section-title section-title-row">
+          <span>Jobs</span>
+          <span class="jobs-hint">Detached tmux sessions</span>
+        </div>
+        <div class="jobs-list" id="jobs-list">
+          <div class="jobs-empty">No jobs yet. Run a detached quick action to start one.</div>
+        </div>
+        <div class="qa-output-field job-output-field" id="job-output-field" style="display:none">
+          <div class="qa-output-label">
+            <span id="job-output-title">Output</span>
+            <span class="job-output-tools">
+              <label class="ui-toggle job-follow-label"><input type="checkbox" id="job-follow" checked><span class="ui-toggle-box"></span>follow</label>
+              <button type="button" class="btn btn-ghost btn-sm" id="job-output-clear">clear</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="job-output-close">close</button>
+            </span>
+          </div>
+          <pre class="qa-output job-output empty" id="job-output">Select Observe on a job to stream its output.</pre>
+        </div>
+      </div>
+
+      <!-- Docker containers -->
+      <div class="section" id="containers-section">
+        <div class="section-title">Containers</div>
+        <div class="table-wrap">
+          <table id="containers-table">
+            <thead>
+              <tr>
+                <th>Name</th><th>State</th><th>Status</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="containers-body">
+              <tr><td colspan="4" style="color:var(--text-dim);font-size:12px;padding:16px 10px;">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="qa-output-field" id="container-log-field" style="display:none">
+          <div class="qa-output-label">
+            <span id="container-log-title">Logs</span>
+            <span class="job-output-tools">
+              <label class="ui-toggle job-follow-label"><input type="checkbox" id="container-log-follow" checked><span class="ui-toggle-box"></span>follow</label>
+              <button type="button" class="btn btn-ghost btn-sm" id="container-log-clear">clear</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="container-log-close">close</button>
+            </span>
+          </div>
+          <pre class="qa-output job-output" id="container-log-output"></pre>
+        </div>
+      </div>
+
+      <!-- Docker images -->
+      <div class="section" id="images-section">
+        <div class="section-title section-title-row">
+          <span>Images</span>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="refreshImages()">refresh</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Repository</th><th>Tag</th><th>ID</th><th>Size</th><th>Created</th></tr>
+            </thead>
+            <tbody id="images-body">
+              <tr><td colspan="5" style="color:var(--text-dim);font-size:12px;padding:16px 10px;">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      </div><!-- /docker panel -->
+
+      <div class="detail-panel" id="detail-panel-network" role="tabpanel" style="display:none">
+      <!-- Network probes -->
+      <div class="section" id="network-section">
+        <div class="section-title">Network probes</div>
+        <div class="probe-form">
+          <select class="form-input" id="probe-type">
+            <option value="ping">ping</option>
+            <option value="dns">DNS</option>
+            <option value="http">HTTP</option>
+            <option value="traceroute">traceroute</option>
+            <option value="iperf3">iperf3</option>
+          </select>
+          <input class="form-input" type="text" id="probe-target" list="probe-targets"
+                 placeholder="hostname / IP / URL / server ID" autocomplete="off">
+          <datalist id="probe-targets"></datalist>
+          <button type="button" class="btn btn-primary btn-sm" id="probe-run">Run probe</button>
+        </div>
+        <div class="probe-hint" id="probe-hint"></div>
+        <pre class="qa-output probe-output" id="probe-output">No probe run yet.</pre>
+      </div>
+
+      </div><!-- /network panel -->
+
+      <div class="detail-panel" id="detail-panel-system" role="tabpanel" style="display:none">
+      <!-- System info / capabilities -->
+      <div class="section" id="system-section">
+        <div class="section-title">System</div>
+        <div id="system-body" class="system-body">
+          <div class="loading-msg">Loading system information…</div>
+        </div>
+      </div>
+
       <!-- Notes -->
       <div class="section" id="notes-section" style="display:none">
         <div class="section-title">Notes</div>
         <div class="notes-block" id="notes-text"></div>
       </div>
+      </div><!-- /system panel -->
     </div>
 
     <!-- Settings view -->
@@ -144,6 +381,7 @@
 
       <div class="settings-tabs">
         <button class="settings-tab active" id="settings-tab-general" onclick="showSettingsTab('general')">General</button>
+        <button class="settings-tab" id="settings-tab-appearance" onclick="showSettingsTab('appearance')">Appearance</button>
         <button class="settings-tab" id="settings-tab-security" onclick="showSettingsTab('security')">Security</button>
         <button class="settings-tab" id="settings-tab-terminal" onclick="showSettingsTab('terminal')">Web Terminal</button>
       </div>
@@ -151,31 +389,13 @@
       <!-- ── Tab: General (configuration) ─────────────────────────────── -->
       <div id="settings-general">
         <div class="settings-section">
-          <h3>Appearance</h3>
-
-          <div class="color-sliders">
-            <div class="slider-row">
-              <span class="slider-label">Accent color</span>
-              <input type="range" class="slider hue-slider" id="hue-slider"
-                     min="0" max="360" value="120"
-                     oninput="applyColorConfig(+this.value, shadeLightness); _saveAppConfig()">
-            </div>
-            <div class="slider-row">
-              <span class="slider-label">Surface shade</span>
-              <input type="range" class="slider shade-slider" id="shade-slider"
-                     min="0" max="100" value="20"
-                     oninput="applyColorConfig(accentHue, +this.value); _saveAppConfig()">
-            </div>
-          </div>
-
-          <div style="margin-top:20px">
-            <div class="toggle-row">
-              <span class="toggle-label">Enable animations &amp; transitions</span>
-              <label class="toggle">
-                <input type="checkbox" id="anim-toggle" checked onchange="setAnimations(this.checked)">
-                <span class="toggle-track"></span>
-              </label>
-            </div>
+          <h3>Units</h3>
+          <p>Choose how memory and disk sizes are displayed.</p>
+          <div class="ui-segmented" role="radiogroup" aria-label="Size units">
+            <label><input type="radio" name="size-units" value="GB"
+                   onchange="setSizeUnits('GB')"><span>GB <small>decimal</small></span></label>
+            <label><input type="radio" name="size-units" value="GiB" checked
+                   onchange="setSizeUnits('GiB')"><span>GiB <small>binary</small></span></label>
           </div>
         </div>
 
@@ -207,6 +427,85 @@
         <div class="settings-section">
           <h3>Quick actions</h3>
           <p>Quick actions are shell commands defined per-server in config. They run as the configured SSH user and their output is streamed back to the UI.</p>
+        </div>
+      </div>
+
+      <!-- ── Tab: Appearance ───────────────────────────────────────────── -->
+      <div id="settings-appearance" style="display:none">
+        <div class="settings-section settings-appearance">
+          <h3>Appearance</h3>
+
+          <div class="color-sliders">
+            <div class="slider-row">
+              <span class="slider-label">Accent color</span>
+              <input type="range" class="slider hue-slider" id="hue-slider"
+                     min="0" max="360" value="120" oninput="themeChanged()">
+            </div>
+            <div class="slider-row">
+              <span class="slider-label">Background color</span>
+              <input type="range" class="slider hue-slider" id="bg-hue-slider"
+                     min="0" max="360" value="0" oninput="hueSliderChanged('background')">
+              <label class="ui-toggle"><input type="checkbox" id="bg-color-enabled" checked
+                     onchange="setColorEnabled('background', this.checked)">
+                <span class="ui-toggle-box"></span>use</label>
+            </div>
+            <div class="slider-row">
+              <span class="slider-label">Background shade</span>
+              <input type="range" class="slider shade-slider" id="shade-slider"
+                     min="0" max="100" value="20" oninput="themeChanged()">
+            </div>
+            <div class="slider-row">
+              <span class="slider-label">Surface color</span>
+              <input type="range" class="slider hue-slider" id="surface-hue-slider"
+                     min="0" max="360" value="0" oninput="hueSliderChanged('surface')">
+              <label class="ui-toggle"><input type="checkbox" id="surface-color-enabled" checked
+                     onchange="setColorEnabled('surface', this.checked)">
+                <span class="ui-toggle-box"></span>use</label>
+            </div>
+            <div class="slider-row">
+              <span class="slider-label">Surface shade</span>
+              <input type="range" class="slider shade-slider" id="surface-shade-slider"
+                     min="0" max="100" value="23" oninput="themeChanged()">
+            </div>
+          </div>
+
+          <div style="margin-top:20px">
+            <label class="ui-toggle">
+              <input type="checkbox" id="anim-toggle" checked onchange="setAnimations(this.checked)">
+              <span class="ui-toggle-box"></span>
+              Enable animations &amp; transitions
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>Background image</h3>
+          <p>Shown behind the dashboard, apps, servers, schedules, and docs. It is blurred and tinted with the surface shade.</p>
+          <div class="bg-controls">
+            <button type="button" class="btn btn-primary btn-sm" onclick="openBackgroundLibrary()">Choose image</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="bg-remove" onclick="removeBackground()">Remove</button>
+            <span class="bg-current" id="bg-current"></span>
+          </div>
+          <div class="slider-row" style="margin-top:14px">
+            <span class="slider-label">Blur</span>
+            <input type="range" class="slider" id="bg-blur-slider" min="0" max="60" value="12"
+                   oninput="onBackgroundBlur(+this.value)">
+            <span class="bg-blur-value" id="bg-blur-value">12px</span>
+          </div>
+          <div class="pw-msg" id="bg-msg"></div>
+        </div>
+
+        <div class="settings-section">
+          <h3>Dashboard</h3>
+          <p>Choose the order of the dashboard sections. The week strip and clock stay at the top.</p>
+          <div style="margin-bottom:14px">
+            <label class="ui-toggle">
+              <input type="checkbox" id="dash-days-toggle" checked onchange="setDashboardDays(this.checked)">
+              <span class="ui-toggle-box"></span>
+              Show week days
+            </label>
+          </div>
+          <div id="dashboard-order-list" class="dashboard-order-list"></div>
         </div>
       </div>
 
@@ -373,6 +672,18 @@
         <input class="form-input" type="text" id="qa-modal-command" placeholder="shell command"
                style="font-family:var(--font-mono);font-size:12px" autocomplete="off">
       </div>
+      <div class="form-group">
+        <label class="form-label">Mode</label>
+        <select class="form-input" id="qa-modal-mode" onchange="toggleQAModalMode()">
+          <option value="shell">Shell — wait for output</option>
+          <option value="detached">Detached — run in tmux</option>
+        </select>
+      </div>
+      <div class="form-group" id="qa-modal-session-group" style="display:none">
+        <label class="form-label">Session name <span class="form-hint">optional fixed name; one-shot jobs get a suffix</span></label>
+        <input class="form-input" type="text" id="qa-modal-session" placeholder="game-server"
+               style="font-family:var(--font-mono);font-size:12px" autocomplete="off">
+      </div>
       <div class="pw-msg" id="qa-modal-msg"></div>
     </div>
     <div class="modal-footer">
@@ -380,6 +691,310 @@
               onclick="deleteQAFromModal()" style="margin-right:auto">Delete</button>
       <button type="button" class="btn btn-ghost" onclick="closeQAModal()">Cancel</button>
       <button type="button" class="btn btn-primary" id="qa-modal-save" onclick="saveQAModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Image library modal -->
+<div id="media-modal" class="modal-overlay" style="display:none" onclick="mediaOverlayClick(event)">
+  <div class="modal media-modal" role="dialog" aria-modal="true" aria-labelledby="media-modal-title">
+    <div class="modal-header">
+      <span class="modal-title" id="media-modal-title">Image library</span>
+      <button class="modal-close" onclick="closeMediaLibrary()" aria-label="Close" id="media-modal-close-btn"></button>
+    </div>
+    <div class="modal-body">
+      <div class="media-toolbar">
+        <div class="media-filters ui-segmented">
+          <button type="button" class="btn btn-ghost btn-sm active" data-media-filter="all" onclick="setMediaFilter('all')">All</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-media-filter="background" onclick="setMediaFilter('background')">Backgrounds</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-media-filter="doc" onclick="setMediaFilter('doc')">Docs</button>
+        </div>
+        <div class="media-upload-row">
+          <input type="file" id="media-file" class="media-file-input"
+                 accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                 onchange="mediaFileChosen(this)">
+          <label for="media-file" class="btn btn-ghost btn-sm media-file-label" id="media-file-label">Choose file</label>
+          <button type="button" class="btn btn-primary btn-sm" onclick="uploadMedia()">Upload</button>
+        </div>
+        <div class="media-url-row">
+          <input class="form-input" type="url" id="media-url" placeholder="https://example.com/image.png" autocomplete="off">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="addMediaFromURL()">Add from URL</button>
+        </div>
+      </div>
+      <div id="media-library-grid" class="media-grid"></div>
+      <div class="pw-msg" id="media-msg"></div>
+    </div>
+  </div>
+</div>
+
+<!-- App add/edit modal -->
+<div id="app-modal" class="modal-overlay" style="display:none" onclick="appOverlayClick(event)">
+  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="app-modal-title">
+    <div class="modal-header">
+      <span class="modal-title" id="app-modal-title">New app</span>
+      <button class="modal-close" onclick="closeAppModal()" aria-label="Close" id="app-modal-close-btn"></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Name</label>
+        <input class="form-input" type="text" id="app-name" placeholder="Gitea" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label class="form-label">URL</label>
+        <input class="form-input" type="url" id="app-url" placeholder="https://gitea.example.com" autocomplete="off"
+               style="font-family:var(--font-mono);font-size:12px">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Logo URL <span class="form-hint">optional — PNG, JPG, WebP, GIF or SVG</span></label>
+        <div class="app-logo-edit">
+          <input class="form-input" type="url" id="app-logo" placeholder="https://example.com/logo.svg" autocomplete="off"
+                 oninput="appLogoURLChanged()" style="font-family:var(--font-mono);font-size:12px">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="chooseAppLogoFromLibrary()">Library</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="app-logo-refresh"
+                  onclick="refreshAppLogo()" style="display:none">Refresh</button>
+        </div>
+        <div class="app-logo-library-note" id="app-logo-library-note"></div>
+        <img id="app-logo-preview" class="app-logo-edit-preview" alt="" style="display:none">
+      </div>
+      <div class="pw-msg" id="app-modal-msg"></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-danger btn-sm" id="app-modal-delete"
+              onclick="deleteAppFromModal()" style="margin-right:auto">Delete</button>
+      <button type="button" class="btn btn-ghost" onclick="closeAppModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" id="app-modal-save" onclick="saveApp()">Add app</button>
+    </div>
+  </div>
+</div>
+
+<!-- Schedule add/edit modal -->
+<div id="schedule-modal" class="modal-overlay" style="display:none" onclick="scheduleOverlayClick(event)">
+  <div class="modal schedule-modal" role="dialog" aria-modal="true" aria-labelledby="schedule-modal-title">
+    <div class="modal-header">
+      <span class="modal-title" id="schedule-modal-title">New Schedule</span>
+      <button class="modal-close" onclick="closeScheduleModal()" aria-label="Close" id="schedule-modal-close-btn"></button>
+    </div>
+    <div class="modal-body sched-form">
+      <div class="form-row">
+        <div class="form-group" style="flex:1">
+          <label class="form-label">Name</label>
+          <input class="form-input" type="text" id="sched-name" placeholder="Nightly updates" autocomplete="off">
+        </div>
+        <div class="form-group" style="flex:0 0 120px">
+          <label class="form-label">Enabled</label>
+          <label class="ui-toggle sched-enabled">
+            <input type="checkbox" id="sched-enabled" checked>
+            <span class="ui-toggle-box"></span>enabled
+          </label>
+        </div>
+      </div>
+
+      <div class="sched-section">
+        <div class="sched-section-title">Where</div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1.4">
+            <label class="form-label">Servers <span class="form-hint">local and remote</span></label>
+            <input class="form-input" type="search" id="sched-target-search"
+                   placeholder="Filter servers…" autocomplete="off" oninput="filterScheduleTargets()">
+            <div class="sched-target-list" id="sched-target-list"></div>
+            <div class="sched-target-summary" id="sched-target-summary"></div>
+          </div>
+          <div class="form-group" style="flex:1">
+            <label class="form-label">Tags <span class="form-hint">matched at run time</span></label>
+            <input class="form-input" type="text" id="sched-tags" list="sched-tag-options"
+                   placeholder="prod" autocomplete="off" oninput="scheduleTagsChanged()">
+            <datalist id="sched-tag-options"></datalist>
+            <div class="sched-warning" id="sched-tag-warning"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sched-section">
+        <div class="sched-section-title">What</div>
+        <div class="form-row">
+          <div class="form-group" style="flex:0 0 220px">
+            <label class="form-label">Action type</label>
+            <div class="ui-segmented" id="sched-kind-seg">
+              <button type="button" data-seg="quick_action" onclick="setScheduleKind('quick_action')">Quick action</button>
+              <button type="button" data-seg="command" onclick="setScheduleKind('command')">Command</button>
+            </div>
+            <input type="hidden" id="sched-kind" value="quick_action">
+          </div>
+          <div class="form-group" style="flex:1" id="sched-qa-group">
+            <label class="form-label">Quick action</label>
+            <select class="form-input" id="sched-quick-action" onchange="scheduleFormChanged()"></select>
+            <div class="sched-warning" id="sched-qa-warning"></div>
+          </div>
+          <div class="form-group" style="flex:1;display:none" id="sched-command-group">
+            <label class="form-label">Command</label>
+            <textarea class="form-input sched-command" id="sched-command" rows="2"
+                      placeholder="sudo apt-get update && sudo apt-get -y upgrade"
+                      oninput="scheduleFormChanged()"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="sched-section">
+        <div class="sched-section-title">When <span class="form-hint">local time</span></div>
+        <div class="sched-days" id="sched-days-group" style="display:none">
+          <button type="button" class="sched-day" data-sched-day="mon" onclick="toggleSchedDay(this)">Mon</button>
+          <button type="button" class="sched-day" data-sched-day="tue" onclick="toggleSchedDay(this)">Tue</button>
+          <button type="button" class="sched-day" data-sched-day="wed" onclick="toggleSchedDay(this)">Wed</button>
+          <button type="button" class="sched-day" data-sched-day="thu" onclick="toggleSchedDay(this)">Thu</button>
+          <button type="button" class="sched-day" data-sched-day="fri" onclick="toggleSchedDay(this)">Fri</button>
+          <button type="button" class="sched-day" data-sched-day="sat" onclick="toggleSchedDay(this)">Sat</button>
+          <button type="button" class="sched-day" data-sched-day="sun" onclick="toggleSchedDay(this)">Sun</button>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex:0 0 210px">
+            <label class="form-label">Repeat</label>
+            <select class="form-input" id="sched-repeat" onchange="schedRepeatChanged()">
+              <option value="once">Once</option>
+              <option value="minutes">Every N minutes</option>
+              <option value="hours">Every N hours</option>
+              <option value="daily">Daily / every N days</option>
+              <option value="weekdays">Weekdays</option>
+              <option value="weekly">Weekly / custom days</option>
+              <option value="custom">Custom duration</option>
+              <option value="cron">Cron (advanced)</option>
+            </select>
+          </div>
+          <div class="form-group" id="sched-once-group" style="flex:0 0 170px">
+            <label class="form-label">Date</label>
+            <input class="form-input" type="date" id="sched-date" oninput="scheduleFormChanged()">
+          </div>
+          <div class="form-group" id="sched-interval-group" style="flex:0 0 150px;display:none">
+            <label class="form-label">Every</label>
+            <input class="form-input" type="number" min="1" id="sched-interval" value="1"
+                   oninput="scheduleFormChanged()">
+          </div>
+          <div class="form-group" id="sched-daily-group" style="flex:0 0 150px;display:none">
+            <label class="form-label">Every N days</label>
+            <input class="form-input" type="number" min="1" id="sched-daily-every" value="1"
+                   oninput="scheduleFormChanged()">
+          </div>
+          <div class="form-group" id="sched-time-group" style="flex:0 0 150px">
+            <label class="form-label">At</label>
+            <input class="form-input" type="time" id="sched-time" value="03:00"
+                   oninput="scheduleFormChanged()">
+          </div>
+          <div class="form-group" id="sched-custom-group" style="flex:0 0 160px;display:none">
+            <label class="form-label">Duration</label>
+            <input class="form-input" type="text" id="sched-custom-every" placeholder="10s"
+                   oninput="scheduleFormChanged()">
+          </div>
+        </div>
+        <div class="form-row" id="sched-cron-group" style="display:none">
+          <div class="form-group" style="flex:1">
+            <label class="form-label">Cron <span class="form-hint">minute hour day month weekday</span></label>
+            <input class="form-input" type="text" id="sched-cron" placeholder="0 3 * * *"
+                   autocomplete="off" oninput="scheduleFormChanged()"
+                   style="font-family:var(--font-mono);font-size:12px">
+          </div>
+        </div>
+        <div class="sched-preview" id="sched-preview">
+          <div class="sched-preview-label">Next runs</div>
+          <div id="sched-preview-list" class="sched-preview-list">—</div>
+          <div id="sched-preview-warnings" class="sched-warning"></div>
+        </div>
+      </div>
+
+      <div class="sched-section">
+        <div class="sched-section-title">How</div>
+        <div class="form-row">
+          <div class="form-group" style="flex:0 0 230px">
+            <label class="form-label">Overlap</label>
+            <div class="ui-segmented" id="sched-overlap-seg">
+              <button type="button" data-seg="skip" onclick="setScheduleOverlap('skip')">Skip if running</button>
+              <button type="button" data-seg="allow" onclick="setScheduleOverlap('allow')">Allow concurrent</button>
+            </div>
+            <input type="hidden" id="sched-overlap" value="skip">
+          </div>
+          <div class="form-group" style="flex:0 0 150px">
+            <label class="form-label">Timeout</label>
+            <input class="form-input" type="text" id="sched-timeout" placeholder="30m"
+                   autocomplete="off" oninput="scheduleFormChanged()">
+          </div>
+          <div class="form-group" style="flex:1">
+            <label class="form-label">Missed runs</label>
+            <div class="sched-note">Skipped while ServerHub is offline; no catch-up.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pw-msg" id="schedule-modal-msg"></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-danger btn-sm" id="schedule-modal-delete"
+              onclick="deleteScheduleFromModal()" style="margin-right:auto">Delete</button>
+      <button type="button" class="btn btn-ghost" onclick="closeScheduleModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" id="schedule-modal-save" onclick="saveSchedule()">Create schedule</button>
+    </div>
+  </div>
+</div>
+
+<!-- Schedule detail sheet -->
+<div id="schedule-detail-modal" class="modal-overlay" style="display:none" onclick="scheduleDetailOverlayClick(event)">
+  <div class="modal schedule-detail-modal" role="dialog" aria-modal="true" aria-labelledby="schedule-detail-title">
+    <div class="modal-header">
+      <span class="modal-title" id="schedule-detail-title">Schedule</span>
+      <button class="modal-close" onclick="closeScheduleDetail()" aria-label="Close" id="schedule-detail-close-btn"></button>
+    </div>
+    <div class="modal-body" id="schedule-detail-body"></div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-danger btn-sm" id="sched-detail-delete"
+              onclick="scheduleDetailAction('delete')" style="margin-right:auto">Delete</button>
+      <button type="button" class="btn btn-ghost" onclick="scheduleDetailAction('history')">History</button>
+      <button type="button" class="btn btn-ghost" onclick="scheduleDetailAction('edit')">Edit</button>
+      <button type="button" class="btn btn-ghost" id="sched-detail-pause"
+              onclick="scheduleDetailAction('toggle')">Pause</button>
+      <button type="button" class="btn btn-primary" onclick="scheduleDetailAction('run')">Run now</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete occurrence choice modal -->
+<div id="event-delete-modal" class="modal-overlay" style="display:none" onclick="eventDeleteOverlayClick(event)">
+  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="event-delete-title">
+    <div class="modal-header">
+      <span class="modal-title" id="event-delete-title">Delete event</span>
+      <button class="modal-close" onclick="closeEventDeleteModal()" aria-label="Close" id="event-delete-close-btn"></button>
+    </div>
+    <div class="modal-body">
+      <p class="confirm-message">Delete just this event, or this event and every future event in this schedule?</p>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" onclick="closeEventDeleteModal()">Cancel</button>
+      <button type="button" class="btn btn-ghost" onclick="deleteScheduleOccurrence(false)">This event</button>
+      <button type="button" class="btn btn-danger" onclick="deleteScheduleOccurrence(true)">This and future</button>
+    </div>
+  </div>
+</div>
+
+<!-- Schedule history modal -->
+<div id="schedule-history-modal" class="modal-overlay" style="display:none" onclick="scheduleHistoryOverlayClick(event)">
+  <div class="modal schedule-history-modal" role="dialog" aria-modal="true" aria-labelledby="schedule-history-title">
+    <div class="modal-header">
+      <span class="modal-title" id="schedule-history-title">Run history</span>
+      <button class="modal-close" onclick="closeScheduleHistory()" aria-label="Close" id="schedule-history-close-btn"></button>
+    </div>
+    <div class="modal-body" id="schedule-history-body"></div>
+  </div>
+</div>
+
+<!-- Generic confirmation modal (slider or Cmd/Ctrl+Delete) -->
+<div id="confirm-modal" class="modal-overlay" style="display:none" onclick="confirmOverlayClick(event)">
+  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+    <div class="modal-header">
+      <span class="modal-title" id="confirm-title">Confirm</span>
+      <button class="modal-close" onclick="finishConfirm(false)" aria-label="Close" id="confirm-modal-close-btn"></button>
+    </div>
+    <div class="modal-body">
+      <p class="confirm-message" id="confirm-message"></p>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" onclick="finishConfirm(false)">Cancel</button>
+      <button type="button" class="btn btn-danger" id="confirm-ok" onclick="finishConfirm(true)">Delete</button>
     </div>
   </div>
 </div>
@@ -396,10 +1011,15 @@
         Remove <strong id="delete-server-name" style="color:var(--text)"></strong> from ServerHub?
         This only removes it from the dashboard — it won't affect the server itself.
       </p>
+      <div class="form-group" style="margin-top:14px">
+        <label class="form-label">Type <code>delete</code> to confirm</label>
+        <input class="form-input" type="text" id="delete-confirm-input" autocomplete="off"
+               spellcheck="false" oninput="updateDeleteConfirm()" onkeydown="deleteConfirmKeydown(event)">
+      </div>
     </div>
     <div class="modal-footer">
       <button type="button" class="btn btn-ghost" onclick="closeDeleteModal()">Cancel</button>
-      <button type="button" class="btn btn-danger" onclick="deleteServer()">Delete</button>
+      <button type="button" class="btn btn-danger" id="delete-server-confirm" onclick="deleteServer()" disabled>Delete server</button>
     </div>
   </div>
 </div>
@@ -415,13 +1035,20 @@
     if (el) el.innerHTML = icon(iconName, size);
   }
   setNavIcon('nav-dashboard-icon', 'squares-four', 15);
-  setNavIcon('nav-local-icon',     'monitor',      15);
+  setNavIcon('nav-servers-icon',   'monitor',      15);
+  setNavIcon('nav-apps-icon',      'squares-four', 15);
+  setNavIcon('nav-schedules-icon', 'calendar-blank', 15);
+  setNavIcon('nav-docs-icon',      'book-open',    15);
   setNavIcon('nav-add-icon',       'plus',         12);
   setNavIcon('nav-settings-icon',  'gear-six',     15);
+  setNavIcon('sidebar-collapse-icon', 'arrow-left', 14);
+  setNavIcon('sidebar-open-icon',    'arrow-left', 14);
   setNavIcon('nav-signout-icon',   'power',        15);
   setNavIcon('back-icon',          'arrow-left',   13);
   setNavIcon('qa-add-icon',        'plus',         11);
   setNavIcon('qa-form-add-icon',   'plus',         11);
+  setNavIcon('schedule-add-icon',  'plus',         13);
+  setNavIcon('apps-add-icon',      'plus',         13);
 
   // Modal close buttons
   const mc = document.getElementById('modal-close-btn');
@@ -430,6 +1057,20 @@
   if (dc) dc.innerHTML = icon('x', 16);
   const qc = document.getElementById('qa-modal-close-btn');
   if (qc) qc.innerHTML = icon('x', 16);
+  const sc = document.getElementById('schedule-modal-close-btn');
+  if (sc) sc.innerHTML = icon('x', 16);
+  const hc = document.getElementById('schedule-history-close-btn');
+  if (hc) hc.innerHTML = icon('x', 16);
+  const sdc = document.getElementById('schedule-detail-close-btn');
+  if (sdc) sdc.innerHTML = icon('x', 16);
+  const amc = document.getElementById('app-modal-close-btn');
+  if (amc) amc.innerHTML = icon('x', 16);
+  const mmc = document.getElementById('media-modal-close-btn');
+  if (mmc) mmc.innerHTML = icon('x', 16);
+  const cmc = document.getElementById('confirm-modal-close-btn');
+  if (cmc) cmc.innerHTML = icon('x', 16);
+  const edc = document.getElementById('event-delete-close-btn');
+  if (edc) edc.innerHTML = icon('x', 16);
 
 })();
 </script>

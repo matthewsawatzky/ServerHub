@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -77,4 +79,44 @@ func RunContainerAction(name, action string) (string, error) {
 	defer cancel()
 	out, err := exec.CommandContext(ctx, "docker", action, name).CombinedOutput()
 	return string(out), err
+}
+
+const dockerImagesFormat = `{"repository":"{{.Repository}}","tag":"{{.Tag}}","id":"{{.ID}}","size":"{{.Size}}","created":"{{.CreatedSince}}"}`
+
+// CollectImages lists local Docker images using the same wire format as the
+// remote SSH collector.
+func CollectImages() ([]sshclient.Image, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "docker", "images", "--format", dockerImagesFormat).Output()
+	if err != nil {
+		return nil, err
+	}
+	return sshclient.ParseImageLines(string(out)), nil
+}
+
+// StreamLogs follows a local container's logs. Both stdout and stderr are
+// merged; cancelling ctx kills the docker process.
+func StreamLogs(ctx context.Context, name string, tail int) (io.ReadCloser, error) {
+	if !sshclient.ValidContainerName(name) {
+		return nil, fmt.Errorf("invalid container name")
+	}
+	if tail < 1 {
+		tail = 200
+	}
+	if tail > 10000 {
+		tail = 10000
+	}
+	cmd := exec.CommandContext(ctx, "docker", "logs", "--tail", strconv.Itoa(tail), "-f", name)
+	pr, pw := io.Pipe()
+	cmd.Stdout = pw
+	cmd.Stderr = pw
+	if err := cmd.Start(); err != nil {
+		pw.Close()
+		return nil, err
+	}
+	go func() {
+		pw.CloseWithError(cmd.Wait())
+	}()
+	return pr, nil
 }
