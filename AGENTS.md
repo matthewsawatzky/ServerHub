@@ -63,6 +63,36 @@ CGO_ENABLED=0 go build ./...
 Run `./dev` afterward if you changed runtime behavior. For concurrency work,
 `./dev race` is available.
 
+## Releasing a version
+
+When the user asks to "fix X and release" (or "release the next update"), the
+fix and the release are one flow an agent can complete on its own:
+
+1. **Fix the issue** and verify it (section above, plus the dev harness for
+   runtime behavior).
+2. **Write the release notes** at `docs/releases/vX.Y.Z.md` using the template
+   in `docs/releases/README.md`: `## Added`, `## Changed`, `## Fixed` — one
+   bullet per user-visible change since the previous tag; a section with
+   nothing in it states "(none)". Pick the version by bumping the newest tag
+   (`git tag -l 'v*'`): patch digit for fixes, minor digit for features.
+3. **Commit and push** everything (the notes file included). This is allowed
+   without asking when the user requested a release.
+4. **Run `./release.sh vX.Y.Z`**. It enforces a clean, pushed-default-branch
+   tree, runs vet + tests, builds all 8 platforms plus DMGs via `build.sh`,
+   checksums the artifacts, validates the notes sections, tags `vX.Y.Z`, and
+   publishes the GitHub release with binaries + `checksums.txt` attached.
+5. Check the release URL it prints, and report it to the user.
+
+Notes:
+- `./release.sh vX.Y.Z --dry-run` builds and checks everything without
+  touching tags or GitHub. Use it when unsure about the notes.
+- If the script fails after tagging, **delete the tag** (`git tag -d vX.Y.Z`
+  and `git push origin :vX.Y.Z`) before retrying. Never reuse or move a
+  published tag.
+- Never hand-edit `dist/` artifacts — `release.sh`/`build.sh` own them.
+- If `gh` is not authenticated on the machine, `release.sh` fails at the
+  GitHub step; tell the user rather than trying workarounds.
+
 ## Testing the UI with Playwright
 
 Playwright is the way to exercise the browser UI. It is already available via

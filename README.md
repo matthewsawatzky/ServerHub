@@ -106,7 +106,9 @@ in [`docs/SECURITY.md`](docs/SECURITY.md).
 
 `build.sh` cross-compiles static binaries to `dist/` for 8 targets
 (linux/darwin/windows, amd64/arm64); `resources/icon.png` is used for the
-platform icons. For development see `dev` (`./dev run` builds a sandboxed
+platform icons. `release.sh vX.Y.Z` packages everything into a tagged GitHub
+release with checksums (releases are made from a clean, pushed default
+branch). For development see `dev` (`./dev run` builds a sandboxed
 instance on port 7080 that never touches your real config).
 
 ---
@@ -115,3 +117,5 @@ instance on port 7080 that never touches your real config).
 
 Personal project, in beta. It is **not** a SaaS and has no multi-user model —
 one person manages their own servers. Issues and feedback very welcome.
+
+Licensed under the [MIT License](LICENSE).
