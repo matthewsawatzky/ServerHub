@@ -1,7 +1,30 @@
 # AGENTS.md — ServerHub
 
-Read this before touching the codebase. It is the short, practical version of
-`BUILD.md`; the full architecture and design rationale live there.
+Read this before touching the codebase. This is the operational handbook: how
+to work in this repo, what must never be broken, and the flows for the asks
+this project gets. The deep architecture and design rationale live in
+`BUILD.md` — read both before non-trivial changes. (`AI.md` explains the
+human/agent split in this project, briefly and disrespectfully.)
+
+**Read order for a fresh agent:**
+1. This file (operational rules + security invariants)
+2. `BUILD.md` (architecture: Go backend, embedded SPA, jobs, scheduler)
+3. `docs/SECURITY.md` + `docs/security-audit.md` (threat model — most
+   mitigations there are deliberate; do not "improve" them ad hoc)
+4. `docs/CONFIGURATION.md` + `docs/examples/` (what users configure)
+5. `docs/design-jobs-scheduler.md` (agreed model for jobs/schedules/probes —
+   do not diverge from it without discussing the change)
+
+## Recipes — what you'll be asked to do
+
+| The ask | What to do |
+|---|---|
+| "fix X and release" / "release the next update" | Fix → verify → release notes → commit/push → `./release.sh vX.Y.Z` (see [Releasing](#releasing-a-version)) |
+| "add a feature" | Understand existing patterns first (`BUILD.md`), implement, verify, then `go test ./...` + a Playwright pass if UI |
+| "the UI looks/behaves wrong" | Reproduce with `./dev run` + Playwright screenshot, fix in `go/web/`, verify visually |
+| "add a server-side endpoint" | Follow `go/internal/api/handlers.go` patterns: guard passes every request; use `writeJSON`; validate inputs; audit mutating actions via `LogAction` |
+| Hand-edit conf files break things | Invalid schedule entries are skipped + surfaced (`GET /api/scheduler/status`, Schedules-page banner). Do not make load errors fatal again |
+| Investigate a crash/hang | `./dev race` build; reproduce via API or Playwright; check debug panel (Settings → Debug, loopback-only) |
 
 ## Hard rule: never test against the live install
 
@@ -13,7 +36,7 @@ Use the dev harness for every build and test:
 
 ```sh
 ./dev            # build for this machine, state sandboxed in ./test-config/
-./dev run        # build, then run on http://127.0.0.1:7080
+./dev run        # build, then run on port 7080 (binds the developer's tailnet IP, not loopback)
 ./dev race       # build with the Go race detector
 ```
 
@@ -21,14 +44,15 @@ Use the dev harness for every build and test:
 run, then bakes `-X serverhub/internal/storage.devDir=<repo>/test-config` into
 the binary. That override redirects *all* state — `config.yaml`, `servers.conf`,
 `auth.json`, `sessions.json`, `jobs.json`, `schedules.conf`,
-`schedules-state.json`, `known_hosts` — into `test-config/`. The dev
-config listens on port **7080** (live default is 7070) and does not open a
-browser.
+`schedules-state.json`, `known_hosts` — into `test-config/`. The dev config
+listens on port **7080** (live default is 7070) and does not open a browser.
+The dev instance is password-less; curl it on the address `./dev` prints.
 
 Important: passing `./serverhub /some/other/config.yaml` does **not** redirect
 auth/session/host-key state. Unless the binary was built with the `storage.devDir`
 ldflag above, those files still resolve to the live OS config directory. When in
-doubt, use `./dev`.
+doubt, use `./dev`. (Backgrounding `./dev run` without a TTY works: the script
+feeds the server a non-EOF stdin.)
 
 `test-config/`, `serverhub`, and `dist/` are gitignored. Do not commit them.
 
@@ -49,6 +73,42 @@ doubt, use `./dev`.
 `config.yaml` into `servers.conf`. In code, use `config.Save` (app settings),
 `config.SaveServers` (inventory), or `config.SaveAll` (both).
 
+## Security invariants — non-negotiable
+
+These are the rules that must survive every change. The reasoning and the
+audit trail live in `docs/security-audit.md`.
+
+1. **Middleware order is load-bearing:** `SecurityHeaders → Guard → auth →
+   debug → mux`. Guard stays *outside* auth (it covers public routes);
+   debug stays *inside* auth. Do not reorder.
+2. **Never log, audit, or echo the password value.** Passwords are bcrypt
+   hashes in `auth.json`, never in `config.yaml`, never in logs.
+3. **Session security:** tokens only ever stored as SHA-256 hashes in
+   `sessions.json`; cookies are HttpOnly + SameSite=Strict; the login rate
+   limiter stays. Physical file access implying access to the config dir is
+   an accepted owner risk — do not "fix" by moving secrets into the cloud.
+4. **SSH host keys are TOFU-pinned.** Do not reintroduce
+   `InsecureIgnoreHostKey` as a default; the only opt-out is
+   `server.insecure_ignore_host_key: true` (logged at startup). New dials go
+   through `ssh.SetHostKeyPolicy`/`hostKeyCallback`.
+5. **Data-derived markup never uses inline event handlers from data.** Server
+   IDs are validated by `config.ValidateID`; remote values (container names,
+   load, command output) are sanitized at the boundary and escaped client
+   side with `esc()`. New markup sinks = new escaping work.
+6. **All file writes go through `internal/storage`** — it owns state-dir
+   resolution and permissions (`0700` dir, `0600` files, atomic
+   temp+fsync+rename). Do not write state files with raw `os.WriteFile`.
+7. **No CDN references in `web/`** — xterm.js is vendored in `web/vendor/`
+   and embedded. The frontend stays a no-build-step vanilla JS file.
+8. **No new runtime dependencies without a good reason.** Keep the single
+   static binary. (Go test/dev deps: practically never needed.)
+9. **Remote targets are Linux; bind-by-default loopback.** Never suggest
+   `bind: "0.0.0.0"`; non-loopback binds require an encrypted overlay
+   (Tailscale/WireGuard) and trigger the startup warning — by design.
+10. **SSH commands are shell-quoted at the boundary** — `shellQuote()` in
+    `handlers.go`/`jobs.go`; commands embedded in remote scripts use quoted
+    heredocs/`sh -c`. Do not bypass quoting for user-supplied strings.
+
 ## Verification before handing work back
 
 Run from `go/`:
@@ -61,37 +121,19 @@ CGO_ENABLED=0 go build ./...
 ```
 
 Run `./dev` afterward if you changed runtime behavior. For concurrency work,
-`./dev race` is available.
+`./dev race` is available. Tests already cover the important behavior (see
+`BUILD.md` → "Tests"); when fixing a bug, add the regression test at the same
+place.
 
-## Releasing a version
+## Tooling reference
 
-When the user asks to "fix X and release" (or "release the next update"), the
-fix and the release are one flow an agent can complete on its own:
-
-1. **Fix the issue** and verify it (section above, plus the dev harness for
-   runtime behavior).
-2. **Write the release notes** at `docs/releases/vX.Y.Z.md` using the template
-   in `docs/releases/README.md`: `## Added`, `## Changed`, `## Fixed` — one
-   bullet per user-visible change since the previous tag; a section with
-   nothing in it states "(none)". Pick the version by bumping the newest tag
-   (`git tag -l 'v*'`): patch digit for fixes, minor digit for features.
-3. **Commit and push** everything (the notes file included). This is allowed
-   without asking when the user requested a release.
-4. **Run `./release.sh vX.Y.Z`**. It enforces a clean, pushed-default-branch
-   tree, runs vet + tests, builds all 8 platforms plus DMGs via `build.sh`,
-   checksums the artifacts, validates the notes sections, tags `vX.Y.Z`, and
-   publishes the GitHub release with binaries + `checksums.txt` attached.
-5. Check the release URL it prints, and report it to the user.
-
-Notes:
-- `./release.sh vX.Y.Z --dry-run` builds and checks everything without
-  touching tags or GitHub. Use it when unsure about the notes.
-- If the script fails after tagging, **delete the tag** (`git tag -d vX.Y.Z`
-  and `git push origin :vX.Y.Z`) before retrying. Never reuse or move a
-  published tag.
-- Never hand-edit `dist/` artifacts — `release.sh`/`build.sh` own them.
-- If `gh` is not authenticated on the machine, `release.sh` fails at the
-  GitHub step; tell the user rather than trying workarounds.
+| Tool | What it does |
+|---|---|
+| `./dev` / `./dev run` / `./dev race` | Sandbox builds/runs; state in `test-config/`, port 7080, never touches the live install |
+| `./build.sh` | Cross-compiles 8 platforms + macOS `.app`/DMGs → `dist/` |
+| `./release.sh vX.Y.Z` | Full release: git checks → tests → build → checksums → notes validation → tag → GitHub publish (`--dry-run` for everything-but-publish) |
+| `git` | Default branch is `main`; keep commits clean of `dist/`, `test-config/`, the binary |
+| `gh` | Releases, repo metadata (authenticated as the owner) |
 
 ## Testing the UI with Playwright
 
@@ -111,8 +153,9 @@ for i in $(seq 1 40); do
 done
 ```
 
-Use `http://127.0.0.1:7080` (not a hostname). The Guard only accepts the
-configured bind plus loopback names, and mutating requests need either
+Read the URL from `./dev`'s output — in run mode it binds the developer's
+IP (e.g. `http://100.74.121.84:7080`), not loopback. The Guard only accepts
+the configured bind plus loopback names, and mutating requests need either
 `Content-Type: application/json` or `X-Requested-With: XMLHttpRequest`.
 
 Remember to stop it when done: `kill "$pid"`.
@@ -172,7 +215,9 @@ npx playwright test smoke.spec.js --reporter=list
 ```
 
 For multi-step flows, assert on visible text rather than CSS classes where
-possible; the UI classes are implementation details and may change.
+possible; the UI classes are implementation details and may change. Existing
+spec files (`scheduler.spec.js`, `run-now.spec.js`) show the conventions —
+including that the dev server binds a real IP, so read `SH_BASE` from env.
 
 ### Dev-state note for UI work
 
@@ -182,21 +227,47 @@ wizard. If you want state to persist across UI iterations, run `./dev` once
 baked into that binary, so it still uses `test-config/`. Wipe with `./dev`
 again when you want a clean slate.
 
+## Releasing a version
+
+When the user asks to "fix X and release" (or "release the next update"), the
+fix and the release are one flow an agent can complete on its own:
+
+1. **Fix the issue** and verify it (section above, plus the dev harness for
+   runtime behavior).
+2. **Write the release notes** at `docs/releases/vX.Y.Z.md` using the template
+   in `docs/releases/README.md`: `## Added`, `## Changed`, `## Fixed` — one
+   bullet per user-visible change since the previous tag; a section with
+   nothing in it states "(none)". Pick the version by bumping the newest tag
+   (`git tag -l 'v*'`): patch digit for fixes, minor digit for features.
+3. **Commit and push** everything (the notes file included). This is allowed
+   without asking when the user requested a release.
+4. **Run `./release.sh vX.Y.Z`**. It enforces a clean, pushed-default-branch
+   tree, runs vet + tests, builds all 8 platforms plus DMGs via `build.sh`,
+   checksums the artifacts, validates the notes sections, tags `vX.Y.Z`, and
+   publishes the GitHub release with binaries + `checksums.txt` attached.
+5. Check the release URL it prints, and report it to the user.
+
+Notes:
+- `./release.sh vX.Y.Z --dry-run` builds and checks everything without
+  touching tags or GitHub. Use it when unsure about the notes.
+- If the script fails after tagging, **delete the tag** (`git tag -d vX.Y.Z`
+  and `git push origin :vX.Y.Z`) before retrying. Never reuse or move a
+  published tag.
+- Never hand-edit `dist/` artifacts — `release.sh`/`build.sh` own them.
+- If `gh` is not authenticated on the machine, `release.sh` fails at the
+  GitHub step; tell the user rather than trying workarounds.
+
 ## Project conventions / gotchas
 
-- Read `BUILD.md` for architecture; `docs/security-audit.md` explains the threat
-  model and which mitigations are deliberate. `docs/design-jobs-scheduler.md` is the
-  agreed model for future SSH jobs, detached quick actions, schedules, and
-  probes — do not diverge from it without discussing the change.
 - **Do not act on `TODO.md`** unless the user explicitly asks; the file says so.
 - `stress_test.sh` is dead weight and marked for removal.
-- No new runtime dependencies without a good reason; keep the single static
-  binary and the no-build-step frontend.
-- Data-derived markup must never use inline handlers built from data. Server IDs
-  are validated by `config.ValidateID`; remote container names/load values are
-  sanitized at the boundary and escaped client-side.
-- Middleware order is load-bearing:
-  `SecurityHeaders → Guard → auth → debug → mux`.
-- Never log or audit the password value.
-- Do not commit unless the user asks. When you do, inspect `git status`/`git diff`
-  first and keep `dist/`, `test-config/`, and the binary out of the commit.
+- Data-derived markup: see the security invariants above — also the one rule
+  most likely to fail review.
+- Do not commit unless the user asks. Release flows are the exception, and
+  only for the release commits described above. Inspect `git status`/`git diff`
+  first, and keep `dist/`, `test-config/`, and the binary out of every commit.
+- When you change behavior that users can see, update the matching doc
+  (`README.md` for user-facing behavior, `BUILD.md` for architecture,
+  `docs/CONFIGURATION.md` for config surface) in the same change.
+- Keep the user's tone in mind: they want fixes, not feature creep. "I don't
+  want it to do more, I just need it to do it better" is the standing rule.
