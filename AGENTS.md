@@ -154,8 +154,8 @@ again when you want a clean slate.
 
 ## Project conventions / gotchas
 
-- Read `BUILD.md` for architecture; `SECURITY-AUDIT.md` explains the threat
-  model and which mitigations are deliberate. `DESIGN-jobs-scheduler.md` is the
+- Read `BUILD.md` for architecture; `docs/security-audit.md` explains the threat
+  model and which mitigations are deliberate. `docs/design-jobs-scheduler.md` is the
   agreed model for future SSH jobs, detached quick actions, schedules, and
   probes — do not diverge from it without discussing the change.
 - **Do not act on `TODO.md`** unless the user explicitly asks; the file says so.
