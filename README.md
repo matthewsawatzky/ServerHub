@@ -105,7 +105,8 @@ in [`docs/SECURITY.md`](docs/SECURITY.md).
 ## Building for other platforms
 
 `build.sh` cross-compiles static binaries to `dist/` for 8 targets
-(linux/darwin/windows, amd64/arm64); `resources/icon.png` is used for the
+(darwin and windows on amd64/arm64, linux on amd64/arm64 plus ARMv6 and ARMv7);
+`resources/icon.png` is used for the
 platform icons. `release.sh vX.Y.Z` packages everything into a tagged GitHub
 release with checksums (releases are made from a clean, pushed default
 branch). For development see `dev` (`./dev run` builds a sandboxed
